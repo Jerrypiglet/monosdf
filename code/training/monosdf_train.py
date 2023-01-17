@@ -190,6 +190,7 @@ class MonoSDFTrainRunner():
         print("training...")
         if self.GPU_INDEX == 0 :
             self.writer = SummaryWriter(log_dir=os.path.join(self.plots_dir, 'logs'))
+            print('writing logs to ->', os.path.join(self.plots_dir, 'logs'))
 
         self.iter_step = 0
         for epoch in range(self.start_epoch, self.nepochs + 1):
@@ -203,6 +204,8 @@ class MonoSDFTrainRunner():
                 self.train_dataset.change_sampling_idx(-1)
                 
                 #for data_index, (indices, model_input, ground_truth) in enumerate(self.train_dataloader):
+
+                print('== Evaluating epoch %d plot_dataloader...'%epoch)
 
                 indices, model_input, ground_truth = next(iter(self.plot_dataloader))
                 model_input["intrinsics"] = model_input["intrinsics"].cuda()
@@ -220,9 +223,11 @@ class MonoSDFTrainRunner():
                         d['rgb_un_values'] = out['rgb_un_values'].detach()
                     res.append(d)
 
+                print('-- Plotting...')
                 batch_size = ground_truth['rgb'].shape[0]
                 model_outputs = utils.merge_output(res, self.total_pixels, batch_size)
                 plot_data = self.get_plot_data(model_input, model_outputs, model_input['pose'], ground_truth['rgb'], ground_truth['normal'], ground_truth['depth'])
+                print('-- plt.plot...')
 
                 plt.plot(self.model.module.implicit_network,
                         indices,
@@ -234,9 +239,12 @@ class MonoSDFTrainRunner():
                         )
 
                 self.model.train()
+
             self.train_dataset.change_sampling_idx(self.num_pixels)
 
-            for data_index, (indices, model_input, ground_truth) in enumerate(self.train_dataloader):
+            print('== Training epoch %d with train_dataloader...'%epoch)
+
+            for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(self.train_dataloader)):
                 model_input["intrinsics"] = model_input["intrinsics"].cuda()
                 model_input["uv"] = model_input["uv"].cuda()
                 model_input['pose'] = model_input['pose'].cuda()

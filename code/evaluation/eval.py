@@ -61,7 +61,7 @@ def evaluate(**kwargs):
     model.load_state_dict(saved_model_state["model_state_dict"], strict=True)
 
     ####################################################################################################################
-    print("evaluating...")
+    print("== evaluating...")
 
     model.eval()
 
@@ -87,6 +87,8 @@ def evaluate(**kwargs):
 
         mesh_folder = evals_folder_name
         utils.mkdir_ifnotexists(mesh_folder)
+        
+        print('-- exporting mesh to %s...'%'{0}/scan{1}.ply'.format(mesh_folder, scan_id))
         mesh.export('{0}/scan{1}.ply'.format(mesh_folder, scan_id), 'ply')
 
     if eval_rendering:
@@ -94,6 +96,8 @@ def evaluate(**kwargs):
         utils.mkdir_ifnotexists(images_dir)
 
         psnrs = []
+
+        print('-- eval_rendering for %d batches...'%len(eval_dataloader))
         for data_index, (indices, model_input, ground_truth) in enumerate(eval_dataloader):
             model_input["intrinsics"] = model_input["intrinsics"].cuda()
             model_input["uv"] = model_input["uv"].cuda()

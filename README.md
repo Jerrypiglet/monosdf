@@ -29,6 +29,20 @@ We demonstrate that state-of-the-art depth and normal cues extracted from monocu
 </p>
 <br>
 
+# Rui
+
+pytorch=1.8.0
+
+``` bash
+(py38) ruizhu@ubuntu:~/Documents/Projects/monosdf/code$ 
+
+conda activate py38
+
+CUDA_VISIBLE_DEVICES=0 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47769 training/exp_runner.py --conf confs/scannet_mlp.conf --scan_id 1
+
+CUDA_VISIBLE_DEVICES=2 python evaluation/eval.py --conf confs/scannet_mlp.conf --scan_id 1 --resolution 512 --eval_rendering --evals_folder ../pretrained_results --checkpoint ../pretrained_models/scannet_mlp/scan1.pth
+```
+
 # Update
 MonoSDF is integrated to [SDFStudio](https://github.com/autonomousvision/sdfstudio), where monocular depth and normal cues can be applied to [UniSurf](https://github.com/autonomousvision/unisurf/tree/main/model) and [NeuS](https://github.com/Totoro97/NeuS/tree/main/models). Please check it out.
 
@@ -70,10 +84,10 @@ We provide example commands for training DTU, ScanNet, and Replica dataset as fo
 CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/dtu_mlp_3views.conf  --scan_id 65
 
 # ScanNet scan 1 (scene_0050_00)
-CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/scannet_mlp.conf  --scan_id 1
+CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/scannet_mlp.conf --scan_id 1
 
 # Replica scan 1 (room0)
-CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/replica_mlp.conf  --scan_id 1
+CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/replica_mlp.conf --scan_id 1
 ```
 
 We created individual config file on Tanks and Temples dataset so you don't need to set the scan_id. Run training on the courtroom scene as:

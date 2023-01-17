@@ -6,8 +6,10 @@ import trimesh
 from PIL import Image
 import matplotlib.pyplot as plt
 import cv2
+from tqdm import tqdm
 
 from utils import rend_util
+import utils.general as utils
 from utils.general import trans_topil
 
 
@@ -17,15 +19,19 @@ def plot(implicit_network, indices, plot_data, path, epoch, img_res, plot_nimgs,
         cam_loc, cam_dir = rend_util.get_camera_for_plot(plot_data['pose'])
 
         # plot images
+        print('-[def plot()] plot images...')
         plot_images(plot_data['rgb_eval'], plot_data['rgb_gt'], path, epoch, plot_nimgs, img_res, indices)
 
         # plot normal maps
+        print('-[def plot()] plot normal maps...')
         plot_normal_maps(plot_data['normal_map'], plot_data['normal_gt'], path, epoch, plot_nimgs, img_res, indices)
 
         # plot depth maps
+        print('-[def plot()] plot depth maps...')
         plot_depth_maps(plot_data['depth_map'], plot_data['depth_gt'], path, epoch, plot_nimgs, img_res, indices)
 
         # concat output images to single large image
+        print('-[def plot()] plot merge...')
         images = []
         for name in ["rendering", "depth", "normal"]:
             images.append(cv2.imread('{0}/{1}_{2}_{3}.png'.format(path, name, epoch, indices[0])))        
@@ -33,13 +39,20 @@ def plot(implicit_network, indices, plot_data, path, epoch, img_res, plot_nimgs,
         images = np.concatenate(images, axis=1)
         cv2.imwrite('{0}/merge_{1}_{2}.png'.format(path, epoch, indices[0]), images)
 
-    surface_traces = get_surface_sliding(path=path,
-                                         epoch=epoch,
-                                         sdf=lambda x: implicit_network(x)[:, 0],
-                                         resolution=resolution,
-                                         grid_boundary=grid_boundary,
-                                         level=level
-                                         )
+        # mesh_path = '{0}/scan_epoch{1}.ply'.format(path, epoch)
+        # print('-[def plot()] exporting mesh to %s...'%mesh_path)
+        # mesh = get_surface_sliding(path=path, 
+        #             epoch=epoch, 
+        #             sdf=lambda x: implicit_network(x)[:, 0], 
+        #             resolution=resolution, 
+        #             grid_boundary=grid_boundary, 
+        #             level=level,  
+        #             return_mesh=True,  
+        #             )
+        # print('-[def plot()] exported.')
+
+        # utils.mkdir_ifnotexists(path)
+        # mesh.export(mesh_path, 'ply')
 
 avg_pool_3d = torch.nn.AvgPool3d(2, stride=2)
 upsample = torch.nn.Upsample(scale_factor=2, mode='nearest')
@@ -58,9 +71,9 @@ def get_surface_sliding(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2
     ys = np.linspace(grid_min[1], grid_max[1], N+1)
     zs = np.linspace(grid_min[2], grid_max[2], N+1)
 
-    print(xs)
-    print(ys)
-    print(zs)
+    print('xs', xs)
+    print('ys', ys)
+    print('zs', zs)
     meshes = []
     for i in range(N):
         for j in range(N):
@@ -73,9 +86,12 @@ def get_surface_sliding(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2
                 x = np.linspace(x_min, x_max, cropN)
                 y = np.linspace(y_min, y_max, cropN)
                 z = np.linspace(z_min, z_max, cropN)
-
-                xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
-                points = torch.tensor(np.vstack([xx.ravel(), yy.ravel(), zz.ravel()]).T, dtype=torch.float).cuda()
+                # print('[def get_surface_sliding()] np.meshgrid() with res %d... this could be slow...'%x.shape[0])
+                # xx, yy, zz = np.meshgrid(x, y, z, indexing='ij') # this is really slow...
+                # points = torch.tensor(np.vstack([xx.ravel(), yy.ravel(), zz.ravel()]).T, dtype=torch.float).cuda()
+                # print('[def get_surface_sliding()] np.meshgrid() DONE.')
+                xx, yy, zz = torch.meshgrid(torch.tensor(x), torch.tensor(y), torch.tensor(z)) # this is really slow...
+                points = torch.vstack([xx.flatten(), yy.flatten(), zz.flatten()]).T.float().cuda()
                 
                 def evaluate(points):
                     z = []
@@ -83,7 +99,7 @@ def get_surface_sliding(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2
                         z.append(sdf(pnts))
                     z = torch.cat(z, axis=0)
                     return z
-            
+
                 # construct point pyramids
                 points = points.reshape(cropN, cropN, cropN, 3).permute(3, 0, 1, 2)
                 points_pyramid = [points]
@@ -95,7 +111,8 @@ def get_surface_sliding(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2
                 # evalute pyramid with mask
                 mask = None
                 threshold = 2 * (x_max - x_min)/cropN * 8
-                for pid, pts in enumerate(points_pyramid):
+                print('[def get_surface_sliding()] evalute %d pyramids with mask...'%len(points_pyramid))
+                for pid, pts in tqdm(enumerate(points_pyramid)):
                     coarse_N = pts.shape[-1]
                     pts = pts.reshape(3, -1).permute(1, 0).contiguous()
                     
@@ -122,8 +139,11 @@ def get_surface_sliding(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2
 
                     threshold /= 2.
 
+                print('[def get_surface_sliding()] evalute %d pyramids with mask... DONE.'%len(points_pyramid))
+
                 z = pts_sdf.detach().cpu().numpy()
 
+                print('[def get_surface_sliding()] measure.marching_cubes...')
                 if (not (np.min(z) > level or np.max(z) < level)):
                     z = z.astype(np.float32)
                     verts, faces, normals, values = measure.marching_cubes(
@@ -141,8 +161,11 @@ def get_surface_sliding(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2
                     meshcrop = trimesh.Trimesh(verts, faces, normals)
                     #meshcrop.export(f"{i}_{j}_{k}.ply")
                     meshes.append(meshcrop)
+                print('[def get_surface_sliding()] measure.marching_cubes... DONE.')
 
+    print('[def get_surface_sliding()] trimesh.util.concatenate...')
     combined = trimesh.util.concatenate(meshes)
+    print('[def get_surface_sliding()] trimesh.util.concatenate... DONE.')
 
     if return_mesh:
         return combined
