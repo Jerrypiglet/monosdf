@@ -144,7 +144,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         self.num_views = num_views
         assert num_views in [-1, 3, 6, 9]
         
-        assert os.path.exists(self.instance_dir), "Data directory is empty"
+        assert os.path.exists(self.instance_dir), "Data directory is empty: %s"%self.instance_dir
 
         self.sampling_idx = None
         
@@ -153,18 +153,30 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             data_paths.extend(glob(data_dir))
             data_paths = sorted(data_paths)
             return data_paths
-            
-        image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_rgb.png"))
-        depth_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_depth.npy"))
-        normal_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_normal.npy"))
+
+        # self.if_gt_data = False
+        self.if_gt_data = True
+        
+        if self.if_gt_data:
+            image_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'image'), "*.png"))
+            depth_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'depth'), "*.npy"))
+            normal_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'normal'), "*.npy"))
+        else:
+            image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_rgb.png"))
+            depth_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_depth.npy"))
+            normal_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_normal.npy"))
         
         # mask is only used in the replica dataset as some monocular depth predictions have very large error and we ignore it
         if use_mask:
-            mask_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_mask.npy"))
+            if self.if_gt_data:
+                mask_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'mask'), "*.npy"))
+            else:
+                mask_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_mask.npy"))
         else:
             mask_paths = None
 
         self.n_images = len(image_paths)
+        assert self.n_images > 0
         
         self.cam_file = '{0}/cameras.npz'.format(self.instance_dir)
         camera_dict = np.load(self.cam_file)
@@ -211,6 +223,8 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         for path in image_paths:
             rgb = rend_util.load_rgb(path)
             rgb = rgb.reshape(3, -1).transpose(1, 0)
+            assert not np.any(np.isnan(rgb))
+            assert not np.any(np.isinf(rgb))
             self.rgb_images.append(torch.from_numpy(rgb).float())
             
         self.depth_images = []
@@ -218,12 +232,18 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         for dpath, npath in zip(depth_paths, normal_paths):
             depth = np.load(dpath)
+            depth[np.isnan(depth)] = 1./1000.
+            depth[np.isinf(depth)] = 1./1000.
+            assert not np.any(np.isnan(depth))
+            assert not np.any(np.isinf(depth))
             self.depth_images.append(torch.from_numpy(depth.reshape(-1, 1)).float())
         
             normal = np.load(npath)
             normal = normal.reshape(3, -1).transpose(1, 0)
             # important as the output of omnidata is normalized
             normal = normal * 2. - 1.
+            assert not np.any(np.isnan(normal))
+            assert not np.any(np.isinf(normal))
             self.normal_images.append(torch.from_numpy(normal).float())
 
         # load mask

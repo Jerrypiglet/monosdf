@@ -33,6 +33,8 @@ We demonstrate that state-of-the-art depth and normal cues extracted from monocu
 
 pytorch=1.8.0
 
+## Train/test on scannet:
+
 ``` bash
 (py38) ruizhu@ubuntu:~/Documents/Projects/monosdf/code$ 
 
@@ -41,6 +43,27 @@ conda activate py38
 CUDA_VISIBLE_DEVICES=0 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47769 training/exp_runner.py --conf confs/scannet_mlp.conf --scan_id 1
 
 CUDA_VISIBLE_DEVICES=2 python evaluation/eval.py --conf confs/scannet_mlp.conf --scan_id 1 --resolution 512 --eval_rendering --evals_folder ../pretrained_results --checkpoint ../pretrained_models/scannet_mlp/scan1.pth
+```
+
+## Train/test on kitchen-train (GT geometry; png input):
+
+``` bash
+CUDA_VISIBLE_DEVICES=2 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47739 training/exp_runner.py --conf confs/kitchen_train_mlp.conf --scan_id 1
+
+CUDA_VISIBLE_DEVICES=2 python evaluation/eval.py --conf confs/kitchen_train_mlp.conf --scan_id 1 --resolution 512 --eval_rendering --evals_folder ../eval_results/kitchen_train_png_gt --checkpoint ../exps/kitchen_gt_train_mlp_1/2023_01_18_00_01_24/checkpoints/ModelParameters/latest.pth
+```
+
+### extract estimated geometry
+``` bash
+ruizhu@ubuntu:~/Documents/Projects/monosdf/preprocess$ python extract_monocular_cues.py --task depth --img_path ../data/kitchen/scan1/image --output_path ../data/kitchen/scan1 --omnidata_path /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch --pretrained_models /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch/pretrained_models/
+```
+
+## Train/test on openrooms (GT geometry; png input):
+
+``` bash
+CUDA_VISIBLE_DEVICES=2 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47729 training/exp_runner.py --conf confs/openrooms_mlp.conf --scan_id 1
+
+CUDA_VISIBLE_DEVICES=2 python evaluation/eval.py --conf confs/openrooms_mlp.conf --scan_id 1 --resolution 512 --eval_rendering --evals_folder ../eval_results/openrooms_png_gt --checkpoint ../exps/public_re_3_v3pose_2048-main_xml-scene0008_00_more_gt_train_mlp_1/2023_01_18_01_30_24/checkpoints/ModelParameters/latest.pth
 ```
 
 # Update

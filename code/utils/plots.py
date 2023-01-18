@@ -59,9 +59,10 @@ upsample = torch.nn.Upsample(scale_factor=2, mode='nearest')
 
 @torch.no_grad()
 def get_surface_sliding(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2.0], return_mesh=False, level=0):
-    assert resolution % 512 == 0
-    resN = resolution
     cropN = 512
+    # cropN = 128
+    assert resolution % cropN == 0
+    resN = resolution
     level = 0
     N = resN // cropN
 
