@@ -42,7 +42,7 @@ for idx, scan in enumerate(scans):
 
     # curmesh
     cull_mesh_out = os.path.join(out_dir, f"{scan}.ply")
-    cmd = f"python cull_mesh.py --input_mesh {ply_file} --input_scalemat ../data/Replica/scan{idx}/cameras.npz --traj ../data/Replica/scan{idx}/traj.txt --output_mesh {cull_mesh_out}"
+    cmd = f"python cull_mesh.py --input_mesh {ply_file} --input_scalemat ../data/Replica/{idx}/cameras.npz --traj ../data/Replica/{idx}/traj.txt --output_mesh {cull_mesh_out}"
     print(cmd)
     os.system(cmd)
 

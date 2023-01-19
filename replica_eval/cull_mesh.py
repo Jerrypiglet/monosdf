@@ -56,7 +56,7 @@ faces = mesh.faces
 
 
 # delete mesh vertices that are not inside any camera's viewing frustum
-whole_mask = np.ones(pc.shape[0]).astype(np.bool)
+whole_mask = np.ones(pc.shape[0]).astype(np.bool_)
 for i in range(0, n_imgs, 1):
     c2w = poses[i]
     points = pc.copy()

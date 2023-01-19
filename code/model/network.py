@@ -327,7 +327,8 @@ class RenderingNetwork(nn.Module):
             dims,
             weight_norm=True,
             multires_view=0,
-            per_image_code = False
+            per_image_code = False, 
+            if_hdr=False, 
     ):
         super().__init__()
 
@@ -354,6 +355,7 @@ class RenderingNetwork(nn.Module):
         print(dims)
 
         self.num_layers = len(dims)
+        self.if_hdr = if_hdr
 
         for l in range(0, self.num_layers - 1):
             out_dim = dims[l + 1]
@@ -392,7 +394,11 @@ class RenderingNetwork(nn.Module):
             if l < self.num_layers - 2:
                 x = self.relu(x)
         
-        x = self.sigmoid(x)
+        if self.if_hdr:
+            x = self.relu(x)
+        else:
+            x = self.sigmoid(x)
+
         return x
 
 

@@ -14,11 +14,11 @@ class SceneDataset(torch.utils.data.Dataset):
     def __init__(self,
                  data_dir,
                  img_res,
-                 scan_id=0,
+                 scan_id: str='scan0',
                  num_views=-1,  
                  ):
 
-        self.instance_dir = os.path.join('../data', data_dir, 'scan{0}'.format(scan_id))
+        self.instance_dir = os.path.join('../data', data_dir, '{0}'.format(scan_id))
 
         self.total_pixels = img_res[0] * img_res[1]
         self.img_res = img_res
@@ -131,18 +131,22 @@ class SceneDatasetDN(torch.utils.data.Dataset):
     def __init__(self,
                  data_dir,
                  img_res,
-                 scan_id=0,
+                 scan_id: str='scan0',
+                 if_hdr=False, # if load HDR images (e.g. OpenRooms, kitchen)
+                 if_gt_data=True, 
                  center_crop_type='xxxx',
                  use_mask=False,
                  num_views=-1
                  ):
 
-        self.instance_dir = os.path.join('../data', data_dir, 'scan{0}'.format(scan_id))
+        self.instance_dir = os.path.join('../data', data_dir, '{0}'.format(scan_id))
 
         self.total_pixels = img_res[0] * img_res[1]
         self.img_res = img_res
         self.num_views = num_views
         assert num_views in [-1, 3, 6, 9]
+
+        self.if_hdr = if_hdr
         
         assert os.path.exists(self.instance_dir), "Data directory is empty: %s"%self.instance_dir
 
@@ -155,14 +159,16 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             return data_paths
 
         # self.if_gt_data = False
-        self.if_gt_data = True
+        # self.if_gt_data = True
+
+        self.if_gt_data = if_gt_data
         
         if self.if_gt_data:
-            image_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'image'), "*.png"))
+            image_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'image'), "*.png" if not self.if_hdr else "*.exr"))
             depth_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'depth'), "*.npy"))
             normal_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'normal'), "*.npy"))
         else:
-            image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_rgb.png"))
+            image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_rgb.png" if not self.if_hdr else "image/*.exr"))
             depth_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_depth.npy"))
             normal_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_normal.npy"))
         
@@ -221,8 +227,13 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         self.rgb_images = []
         for path in image_paths:
-            rgb = rend_util.load_rgb(path)
-            rgb = rgb.reshape(3, -1).transpose(1, 0)
+            if self.if_hdr:
+                rgb = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+                assert rgb is not None
+                rgb = cv2.cvtColor(rgb[:, :, :3], cv2.COLOR_BGR2RGB).reshape(-1, 3)
+            else:
+                rgb = rend_util.load_rgb(path)
+                rgb = rgb.reshape(3, -1).transpose(1, 0) # (N, 3)
             assert not np.any(np.isnan(rgb))
             assert not np.any(np.isinf(rgb))
             self.rgb_images.append(torch.from_numpy(rgb).float())

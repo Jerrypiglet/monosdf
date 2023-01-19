@@ -7,3 +7,6 @@ opencv-python
 tensorboard
 scipy
 numpy
+timm
+h5py
+pytorch_lightning

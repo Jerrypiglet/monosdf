@@ -13,7 +13,7 @@ import os.path
 from pathlib import Path
 import glob
 import sys
-
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser(description='Visualize output for depth or surface normals')
 
@@ -45,13 +45,21 @@ from data.transforms import get_transform
 
 trans_topil = transforms.ToPILImage()
 os.system(f"mkdir -p {args.output_path}")
+assert torch.cuda.is_available()
 map_location = (lambda storage, loc: storage.cuda()) if torch.cuda.is_available() else torch.device('cpu')
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
+# image_size = 384
+# image_size = 320
+image_size = None # no resizing and cropping
 
-# get target task and model
+'''
+get target task and model
+
+following https://github.com/EPFL-VILAB/omnidata/blob/92dd37d26e5f51109e5a96ad1991b3f74165e323/omnidata_tools/torch/demo.py
+'''
+
 if args.task == 'normal':
-    image_size = 384
     
     ## Version 1 model
     # pretrained_weights_path = root_dir + 'omnidata_unet_normal_v1.pth'
@@ -78,12 +86,15 @@ if args.task == 'normal':
 
     model.load_state_dict(state_dict)
     model.to(device)
-    trans_totensor = transforms.Compose([transforms.Resize(image_size, interpolation=PIL.Image.BILINEAR),
-                                        transforms.CenterCrop(image_size),
-                                        get_transform('rgb', image_size=None)])
+    if image_size is None:
+        trans_totensor = transforms.Compose([get_transform('rgb', image_size=None)])
+    else:
+        trans_totensor = transforms.Compose([transforms.Resize(image_size, interpolation=PIL.Image.BILINEAR),
+                                            transforms.CenterCrop(image_size),
+                                            get_transform('rgb', image_size=None), 
+                                            ])
 
 elif args.task == 'depth':
-    image_size = 384
     pretrained_weights_path = root_dir + 'omnidata_dpt_depth_v2.ckpt'  # 'omnidata_dpt_depth_v1.ckpt'
     # model = DPTDepthModel(backbone='vitl16_384') # DPT Large
     model = DPTDepthModel(backbone='vitb_rn50_384') # DPT Hybrid
@@ -96,18 +107,24 @@ elif args.task == 'depth':
         state_dict = checkpoint
     model.load_state_dict(state_dict)
     model.to(device)
-    trans_totensor = transforms.Compose([transforms.Resize(image_size, interpolation=PIL.Image.BILINEAR),
-                                        transforms.CenterCrop(image_size),
-                                        transforms.ToTensor(),
-                                        transforms.Normalize(mean=0.5, std=0.5)])
+    if image_size is None:
+        trans_totensor = transforms.Compose([transforms.ToTensor(),
+                                    transforms.Normalize(mean=0.5, std=0.5)])
+    else:
+        trans_totensor = transforms.Compose([transforms.Resize(image_size, interpolation=PIL.Image.BILINEAR),
+                                            transforms.CenterCrop(image_size),
+                                            transforms.ToTensor(),
+                                            transforms.Normalize(mean=0.5, std=0.5), 
+                                            ])
 
 else:
     print("task should be one of the following: normal, depth")
     sys.exit()
 
-trans_rgb = transforms.Compose([transforms.Resize(image_size, interpolation=PIL.Image.BILINEAR),
-                                transforms.CenterCrop(image_size),
-                                ])
+if image_size is not None:
+    trans_rgb = transforms.Compose([transforms.Resize(image_size, interpolation=PIL.Image.BILINEAR),
+                                    transforms.CenterCrop(image_size),
+                                    ])
 
 
 def standardize_depth_map(img, mask_valid=None, trunc_value=0.1):
@@ -138,9 +155,14 @@ def save_outputs(img_path, output_file_name):
         img = Image.open(img_path)
 
         img_tensor = trans_totensor(img)[:3].unsqueeze(0).to(device)
+        print(torch.amax(img_tensor), torch.amin(img_tensor))
 
         rgb_path = os.path.join(args.output_path, f'{output_file_name}_rgb.png')
-        trans_rgb(img).save(rgb_path)
+        if image_size is None:
+            img.save(rgb_path)
+        else:
+            trans_rgb(img).save(rgb_path)
+
 
         if img_tensor.shape[1] == 1:
             img_tensor = img_tensor.repeat_interleave(3,1)
@@ -149,18 +171,19 @@ def save_outputs(img_path, output_file_name):
 
         if args.task == 'depth':
             #output = F.interpolate(output.unsqueeze(0), (512, 512), mode='bicubic').squeeze(0)
-            output = output.clamp(0,1)
+            output = output.clamp(0, 1)
             
             np.save(save_path.replace('.png', '.npy'), output.detach().cpu().numpy()[0])
             
             #output = 1 - output
 #             output = standardize_depth_map(output)
             plt.imsave(save_path, output.detach().cpu().squeeze(),cmap='viridis')
-            
+
         else:
             #import pdb; pdb.set_trace()
             np.save(save_path.replace('.png', '.npy'), output.detach().cpu().numpy()[0])
             trans_topil(output[0]).save(save_path)
+            print('--normal-->', torch.amax(output[0]), torch.amin(output[0]))
             
         print(f'Writing output {save_path} ...')
 
@@ -169,7 +192,7 @@ img_path = Path(args.img_path)
 if img_path.is_file():
     save_outputs(args.img_path, os.path.splitext(os.path.basename(args.img_path))[0])
 elif img_path.is_dir():
-    for f in glob.glob(args.img_path+'/*'):
+    for f in tqdm(glob.glob(args.img_path+'/*.png')):
         save_outputs(f, os.path.splitext(os.path.basename(f))[0])
 else:
     print("invalid file path!")

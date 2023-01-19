@@ -14,6 +14,7 @@ from utils.general import get_time
 from torch.utils.tensorboard import SummaryWriter
 from model.loss import compute_scale_and_shift
 from utils.general import BackprojectDepth
+from utils.plots import gamma2_th
 
 import torch.distributed as dist
 
@@ -29,8 +30,8 @@ class MonoSDFTrainRunner():
         self.GPU_INDEX = kwargs['gpu_index']
 
         self.expname = self.conf.get_string('train.expname') + kwargs['expname']
-        scan_id = kwargs['scan_id'] if kwargs['scan_id'] != -1 else self.conf.get_int('dataset.scan_id', default=-1)
-        if scan_id != -1:
+        scan_id = kwargs['scan_id'] if kwargs['scan_id'] != '' else self.conf.get_string('dataset.scan_id', default='')
+        if scan_id != '':
             self.expname = self.expname + '_{0}'.format(scan_id)
 
         if kwargs['is_continue'] and kwargs['timestamp'] == 'latest':
@@ -80,7 +81,7 @@ class MonoSDFTrainRunner():
         print('Loading data ...')
 
         dataset_conf = self.conf.get_config('dataset')
-        if kwargs['scan_id'] != -1:
+        if kwargs['scan_id'] != '':
             dataset_conf['scan_id'] = kwargs['scan_id']
 
         self.train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(**dataset_conf)
@@ -88,7 +89,7 @@ class MonoSDFTrainRunner():
         self.max_total_iters = self.conf.get_int('train.max_total_iters', default=200000)
         self.ds_len = len(self.train_dataset)
         print('Finish loading data. Data-set size: {0}'.format(self.ds_len))
-        if scan_id < 24 and scan_id > 0: # BlendedMVS, running for 200k iterations
+        if ('scan' in scan_id and (int(scan_id[4:]) < 24 and int(scan_id[4:]) > 0)) or (not 'scan' in scan_id): # BlendedMVS, running for 200k iterations
             self.nepochs = int(self.max_total_iters / self.ds_len)
             print('RUNNING FOR {0}'.format(self.nepochs))
 
@@ -228,6 +229,10 @@ class MonoSDFTrainRunner():
                 model_outputs = utils.merge_output(res, self.total_pixels, batch_size)
                 plot_data = self.get_plot_data(model_input, model_outputs, model_input['pose'], ground_truth['rgb'], ground_truth['normal'], ground_truth['depth'])
                 print('-- plt.plot...')
+                if 'if_hdr' in self.conf.get_config('dataset'):
+                    if_hdr = self.conf.get_config('dataset')['if_hdr']
+                else:
+                    if_hdr = False
 
                 plt.plot(self.model.module.implicit_network,
                         indices,
@@ -235,6 +240,7 @@ class MonoSDFTrainRunner():
                         self.plots_dir,
                         epoch,
                         self.img_res,
+                        if_hdr=if_hdr, 
                         **self.plot_conf
                         )
 
@@ -258,8 +264,13 @@ class MonoSDFTrainRunner():
                 loss.backward()
                 self.optimizer.step()
                 
-                psnr = rend_util.get_psnr(model_outputs['rgb_values'],
-                                          ground_truth['rgb'].cuda().reshape(-1,3))
+                if if_hdr:
+                    psnr = rend_util.get_psnr(gamma2_th(model_outputs['rgb_values']),
+                                            gamma2_th(ground_truth['rgb'].cuda().reshape(-1,3))
+                                            )
+                else:
+                    psnr = rend_util.get_psnr(model_outputs['rgb_values'],
+                                            ground_truth['rgb'].cuda().reshape(-1,3))
                 
                 self.iter_step += 1                
                 

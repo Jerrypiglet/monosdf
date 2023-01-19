@@ -60,7 +60,7 @@ H, W = 968, 1296
 
 # load pose
 def load_poses(scan_id):
-    pose_path = os.path.join(f'../data/scannet/scan{scan_id}', 'pose')
+    pose_path = os.path.join(f'../data/scannet/{scan_id}', 'pose')
     poses = []
     pose_paths = sorted(glob.glob(os.path.join(pose_path, '*.txt')),
                         key=lambda x: int(os.path.basename(x)[:-4]))
@@ -162,14 +162,14 @@ for idx, scan in enumerate(scenes):
     mesh = trimesh.load(ply_file)
     
     # transform to world coordinate
-    cam_file = f"../data/scannet/scan{idx}/cameras.npz"
+    cam_file = f"../data/scannet/{idx}/cameras.npz"
     scale_mat = np.load(cam_file)['scale_mat_0']
     mesh.vertices = (scale_mat[:3, :3] @ mesh.vertices.T + scale_mat[:3, 3:]).T
     
     # load pose and intrinsic for render depth 
     poses = load_poses(idx)
 
-    intrinsic_path = os.path.join(f'../data/scannet/scan{idx}/intrinsic/intrinsic_color.txt')
+    intrinsic_path = os.path.join(f'../data/scannet/{idx}/intrinsic/intrinsic_color.txt')
     K = np.loadtxt(intrinsic_path)[:3, :3]
     
     mesh = refuse(mesh, poses, K)

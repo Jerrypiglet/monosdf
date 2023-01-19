@@ -12,14 +12,27 @@ from utils import rend_util
 import utils.general as utils
 from utils.general import trans_topil
 
+# def gamma2_th(x):
+#     return x ** (1./2.2)
 
-def plot(implicit_network, indices, plot_data, path, epoch, img_res, plot_nimgs, resolution, grid_boundary,  level=0):
+def gamma2_th(x):
+    mask = x <= 0.0031308
+    ret = torch.empty_like(x)
+    ret[mask] = 12.92*x[mask]
+    mask = ~mask
+    ret[mask] = 1.055*x[mask].pow(1/2.4) - 0.055
+    return ret
+
+def plot(implicit_network, indices, plot_data, path, epoch, img_res, plot_nimgs, resolution, grid_boundary, if_hdr=False, level=0):
 
     if plot_data is not None:
         cam_loc, cam_dir = rend_util.get_camera_for_plot(plot_data['pose'])
 
         # plot images
         print('-[def plot()] plot images...')
+        if if_hdr:
+            plot_data['rgb_eval'] = torch.clip(gamma2_th(plot_data['rgb_eval']), 0., 1.)
+            plot_data['rgb_gt'] = torch.clip(gamma2_th(plot_data['rgb_gt']), 0., 1.)
         plot_images(plot_data['rgb_eval'], plot_data['rgb_gt'], path, epoch, plot_nimgs, img_res, indices)
 
         # plot normal maps

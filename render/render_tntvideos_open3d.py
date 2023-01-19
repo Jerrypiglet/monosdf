@@ -48,7 +48,7 @@ def load(config_file):
 
 def render_scan(scan_id, mesh, out_path):
     
-    instance_dir = os.path.join(data_dir, 'scan{0}'.format(scan_id))
+    instance_dir = os.path.join(data_dir, '{0}'.format(scan_id))
     
     image_paths = glob_data(os.path.join('{0}'.format(instance_dir), "*_rgb.png"))
     n_images = len(image_paths)

@@ -189,7 +189,7 @@ out_path_prefix = "./highres_tmp"
 
 # output folder for hihg-resolution cues 
 out_path_for_training = '../data/highresTNT/'
-out_scan_id = 1
+out_scan_id = 'scan1'
 
 
 for scene in scenes:
@@ -202,7 +202,7 @@ for scene in scenes:
     print(out_folder)
 
     # high-resolutin image used for training
-    out_path_for_training = os.path.join(out_path_for_training, f"scan{out_scan_id}")
+    out_path_for_training = os.path.join(out_path_for_training, f"{out_scan_id}")
     os.makedirs(out_path_for_training, exist_ok=True)
 
     # load poses and images

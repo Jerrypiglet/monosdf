@@ -12,7 +12,7 @@ import pandas as pd
 import utils.general as utils
 import utils.plots as plt
 from utils import rend_util
-
+from utils.plots import gamma2_th
 
 def evaluate(**kwargs):
     torch.set_default_dtype(torch.float32)
@@ -23,10 +23,14 @@ def evaluate(**kwargs):
     evals_folder_name = kwargs['evals_folder_name']
     eval_rendering = kwargs['eval_rendering']
 
-    scan_id = kwargs['scan_id'] if kwargs['scan_id'] != -1 else conf.get_int('dataset.scan_id', default=-1)
+    scan_id = kwargs['scan_id'] if kwargs['scan_id'] != '' else conf.get_string('dataset.scan_id', default='')
 
     dataset_conf = conf.get_config('dataset')
-    if kwargs['scan_id'] != -1:
+    if 'if_hdr' in dataset_conf:
+        if_hdr= dataset_conf['if_hdr']
+    else:
+        if_hdr = False
+    if kwargs['scan_id'] != '':
         dataset_conf['scan_id'] = kwargs['scan_id']
     
     # use all images for evaluation
@@ -88,8 +92,8 @@ def evaluate(**kwargs):
         mesh_folder = evals_folder_name
         utils.mkdir_ifnotexists(mesh_folder)
         
-        print('-- exporting mesh to %s...'%'{0}/scan{1}.ply'.format(mesh_folder, scan_id))
-        mesh.export('{0}/scan{1}.ply'.format(mesh_folder, scan_id), 'ply')
+        print('-- exporting mesh to %s...'%'{0}/{1}-{2}.ply'.format(mesh_folder, mesh_folder, scan_id))
+        mesh.export('{0}/{1}-{2}.ply'.format(mesh_folder, mesh_folder, scan_id), 'ply')
 
     if eval_rendering:
         images_dir = '{0}/rendering'.format(evals_folder_name)
@@ -117,13 +121,21 @@ def evaluate(**kwargs):
             rgb_eval = model_outputs['rgb_values']
             rgb_eval = rgb_eval.reshape(batch_size, total_pixels, 3)
 
+            if if_hdr:
+                rgb_eval = gamma2_th(rgb_eval)
+
             rgb_eval = plt.lin2img(rgb_eval, img_res).detach().cpu().numpy()[0]
             rgb_eval = rgb_eval.transpose(1, 2, 0)
             img = Image.fromarray((rgb_eval * 255).astype(np.uint8))
             img.save('{0}/eval_{1}.png'.format(images_dir,'%03d' % indices[0]))
 
-            psnr = rend_util.get_psnr(model_outputs['rgb_values'],
-                                      ground_truth['rgb'].cuda().reshape(-1, 3)).item()
+            if if_hdr:
+                psnr = rend_util.get_psnr(gamma2_th(model_outputs['rgb_values']),
+                                        gamma2_th(ground_truth['rgb'].cuda().reshape(-1, 3))
+                                        ).item()
+            else:
+                psnr = rend_util.get_psnr(model_outputs['rgb_values'],
+                                        ground_truth['rgb'].cuda().reshape(-1, 3)).item()
             psnrs.append(psnr)
 
 
@@ -141,7 +153,7 @@ if __name__ == '__main__':
     parser.add_argument('--conf', type=str, default='./confs/dtu.conf')
     parser.add_argument('--evals_folder', type=str, default='evals', help='The evaluation folder name.')
     parser.add_argument('--checkpoint', default='latest',type=str,help='The trained model checkpoint to test')
-    parser.add_argument('--scan_id', type=int, default=-1, help='If set, taken to be the scan id.')
+    parser.add_argument('--scan_id', type=str, default='', help='If set, taken to be the scan id.')
     parser.add_argument('--resolution', default=1024, type=int, help='Grid resolution for marching cube')
     parser.add_argument('--world_space', default=False, action="store_true", help='If set, transform to world space')
     parser.add_argument('--eval_rendering', default=False, action="store_true", help='If set, evaluate rendering quality.')

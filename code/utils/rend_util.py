@@ -6,6 +6,14 @@ import torch
 from torch.nn import functional as F
 
 
+def gamma2_th(self, x):
+    mask = x <= 0.0031308
+    ret = torch.empty_like(x)
+    ret[mask] = 12.92*x[mask]
+    mask = ~mask
+    ret[mask] = 1.055*x[mask].pow(1/2.4) - 0.055
+    return ret
+
 def get_psnr(img1, img2, normalize_rgb=False):
     if normalize_rgb: # [-1,1] --> [0,1]
         img1 = (img1 + 1.) / 2.
