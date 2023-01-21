@@ -217,6 +217,11 @@ class MonoSDFTrainRunner():
             self.writer = SummaryWriter(log_dir=os.path.join(self.plots_dir, 'logs'))
             print('writing logs to ->', os.path.join(self.plots_dir, 'logs'))
 
+        if 'if_hdr' in self.conf.get_config('dataset'):
+            if_hdr = self.conf.get_config('dataset')['if_hdr']
+        else:
+            if_hdr = False
+
         # self.iter_step = 0
         for epoch in range(self.start_epoch, self.nepochs + 1):
 
@@ -271,10 +276,6 @@ class MonoSDFTrainRunner():
                     model_outputs = utils.merge_output(res, self.total_pixels, batch_size)
                     plot_data = self.get_plot_data(model_input, model_outputs, model_input['pose'], ground_truth['rgb'], ground_truth['normal'], ground_truth['depth'])
                     # print('-- plt.plot...')
-                    if 'if_hdr' in self.conf.get_config('dataset'):
-                        if_hdr = self.conf.get_config('dataset')['if_hdr']
-                    else:
-                        if_hdr = False
 
                     plt.plot(implicit_network,
                             indices,
@@ -317,15 +318,18 @@ class MonoSDFTrainRunner():
                 
                 self.iter_step += 1                
                 
+                CUDA_VISIBLE_DEVICES = os.environ['CUDA_VISIBLE_DEVICES'] if 'CUDA_VISIBLE_DEVICES' in os.environ else -1, 
                 if self.GPU_INDEX == 0:
                     print(
-                        '{0}_{1} [{2}] ({3}/{4}): loss = {5}, rgb_loss = {6}, eikonal_loss = {7}, psnr = {8}, bete={9}, alpha={10}'
-                            .format(self.expname, self.timestamp, epoch, data_index, self.n_batches, loss.item(),
+                        '{0}_{1} [{2}] ({3}/{4}): loss = {5}, rgb_loss = {6}, eikonal_loss = {7}, psnr = {8}, bete={9}, alpha={10}; [{11}]'
+                            .format(self.expname, 
+                                    self.timestamp, epoch, data_index, self.n_batches, loss.item(),
                                     loss_output['rgb_loss'].item(),
                                     loss_output['eikonal_loss'].item(),
                                     psnr.item(),
                                     self.model.module.density.get_beta().item() if self.if_distributed else self.model.density.get_beta().item(),
-                                    1. / self.model.module.density.get_beta().item() if self.if_distributed else 1. / self.model.density.get_beta().item()
+                                    1. / self.model.module.density.get_beta().item() if self.if_distributed else 1. / self.model.density.get_beta().item(), 
+                                    CUDA_VISIBLE_DEVICES, 
                                     ))
                     
                     self.writer.add_scalar('Loss/loss', loss.item(), self.iter_step)
@@ -349,7 +353,7 @@ class MonoSDFTrainRunner():
                 self.scheduler.step()
 
         if self.GPU_INDEX == 0:
-            self.save_checkpoints(epoch)
+            self.save_checkpoints(epoch, self.iter_step)
 
         
     def get_plot_data(self, model_input, model_outputs, pose, rgb_gt, normal_gt, depth_gt):
