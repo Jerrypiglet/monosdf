@@ -100,7 +100,7 @@ class MonoSDFTrainRunner():
             self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='val', **dataset_conf)
             shuffle_val = False
 
-        self.max_total_iters = self.conf.get_int('train.max_total_iters', default=200000)
+        self.max_total_iters = self.conf.get_int('train.max_total_iters', default=500000)
         self.ds_len = len(self.train_dataset)
         print('Finish loading data. Data-set size: {0}'.format(self.ds_len))
         if ('scan' in scan_id and (int(scan_id[4:]) < 24 and int(scan_id[4:]) > 0)) or (not 'scan' in scan_id): # BlendedMVS, running for 200k iterations
@@ -292,7 +292,7 @@ class MonoSDFTrainRunner():
 
             self.train_dataset.change_sampling_idx(self.num_pixels)
 
-            print('== Training epoch %d with train_dataloader...'%epoch)
+            print('== Training epoch %d (up to %d) with train_dataloader...'%(epoch, self.nepochs))
 
             for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(self.train_dataloader)):
                 model_input["intrinsics"] = model_input["intrinsics"].cuda()
@@ -351,6 +351,9 @@ class MonoSDFTrainRunner():
                 
                 self.train_dataset.change_sampling_idx(self.num_pixels)
                 self.scheduler.step()
+
+            print('== Training epoch %d with train_dataloader... DONE'%epoch)
+
 
         if self.GPU_INDEX == 0:
             self.save_checkpoints(epoch, self.iter_step)
