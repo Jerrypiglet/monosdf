@@ -23,7 +23,11 @@ def gamma2_th(x):
     ret[mask] = 1.055*x[mask].pow(1/2.4) - 0.055
     return ret
 
-def plot(implicit_network, indices, plot_data, path, epoch, img_res, plot_nimgs, resolution, grid_boundary, if_hdr=False, level=0):
+def plot(
+    implicit_network, indices, plot_data, path, epoch, img_res, plot_nimgs, resolution, grid_boundary, 
+    if_hdr=False, level=0, 
+    if_tensorboard=False, writer=None, tid=0, batch_id=0, 
+    ):
 
     if plot_data is not None:
         cam_loc, cam_dir = rend_util.get_camera_for_plot(plot_data['pose'])
@@ -52,20 +56,8 @@ def plot(implicit_network, indices, plot_data, path, epoch, img_res, plot_nimgs,
         images = np.concatenate(images, axis=1)
         cv2.imwrite('{0}/merge_{1}_{2}.png'.format(path, epoch, indices[0]), images)
 
-        # mesh_path = '{0}/scan_epoch{1}.ply'.format(path, epoch)
-        # print('-[def plot()] exporting mesh to %s...'%mesh_path)
-        # mesh = get_surface_sliding(path=path, 
-        #             epoch=epoch, 
-        #             sdf=lambda x: implicit_network(x)[:, 0], 
-        #             resolution=resolution, 
-        #             grid_boundary=grid_boundary, 
-        #             level=level,  
-        #             return_mesh=True,  
-        #             )
-        # print('-[def plot()] exported.')
-
-        # utils.mkdir_ifnotexists(path)
-        # mesh.export(mesh_path, 'ply')
+        if if_tensorboard:
+            writer.add_image('VAL_merge/%d'%(batch_id), images[:, :, [2, 1, 0]], tid, dataformats='HWC')
 
 avg_pool_3d = torch.nn.AvgPool3d(2, stride=2)
 upsample = torch.nn.Upsample(scale_factor=2, mode='nearest')
@@ -110,7 +102,8 @@ def get_surface_sliding(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2
                 def evaluate(points):
                     z = []
                     for _, pnts in enumerate(torch.split(points, 100000, dim=0)):
-                        z.append(sdf(pnts))
+                        _ = sdf(pnts).detach().cpu().clone()
+                        z.append(_)
                     z = torch.cat(z, axis=0)
                     return z
 

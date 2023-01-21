@@ -55,3 +55,5 @@ for idx, scan in enumerate(scans):
     
     evaluation_txt_file.write(f"{scan},{Path(ply_file).name},{output}")
     evaluation_txt_file.flush()
+
+evaluation_txt_file.close()

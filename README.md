@@ -33,6 +33,12 @@ We demonstrate that state-of-the-art depth and normal cues extracted from monocu
 
 pytorch=1.8.0
 
+Distributed training: 
+
+``` bash
+CUDA_VISIBLE_DEVICES=0 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47769  ...
+```
+
 ## [scannet]
 
 ``` bash
@@ -40,9 +46,9 @@ pytorch=1.8.0
 
 conda activate py38
 
-CUDA_VISIBLE_DEVICES=0 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47769 training/exp_runner.py --conf confs/scannet_mlp.conf --scan_id scan1
+python training/exp_runner.py --conf confs/scannet_mlp.conf --scan_id scan1
 
-CUDA_VISIBLE_DEVICES=2 python evaluation/eval.py --conf confs/scannet_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../pretrained_results --checkpoint ../pretrained_models/scannet_mlp/scan1.pth
+python evaluation/eval.py --conf confs/scannet_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../pretrained_results --checkpoint ../pretrained_models/scannet_mlp/scan1.pth
 ```
 
 ## [kitchen-train]
@@ -60,41 +66,46 @@ conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit
 ```
 
 ``` bash
-(monosdf-py38) ruizhu@ubuntu:~/Documents/Projects/monosdf/preprocess$ CUDA_VISIBLE_DEVICES=0 python extract_monocular_cues.py --task normal --img_path ../data/kitchen/scan1/image --output_path ../data/kitchen/scan1 --omnidata_path /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch --pretrained_models /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch/pretrained_models/
+(monosdf-py38) ruizhu@ubuntu:~/Documents/Projects/monosdf/preprocess$ python extract_monocular_cues.py --task normal --img_path ../data/kitchen/scan1/image --output_path ../data/kitchen/scan1 --omnidata_path /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch --pretrained_models /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch/pretrained_models/
 ```
 
 **(GT geometry; PNG input)**
 
 ``` bash
-CUDA_VISIBLE_DEVICES=2 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47739 training/exp_runner.py --conf confs/kitchen_train_mlp.conf --scan_id scan1
+python training/exp_runner.py --conf confs/kitchen_trainval_mlp.conf --scan_id trainval
 
-CUDA_VISIBLE_DEVICES=2 python evaluation/eval.py --conf confs/kitchen_train_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/kitchen_train_png_gt --checkpoint ../exps/kitchen_gt_train_mlp_1/2023_01_18_00_01_24/checkpoints/ModelParameters/latest.pth
+python evaluation/eval.py --conf confs/kitchen_mlp.conf --scan_id trainval --resolution 512 --eval_rendering --evals_folder ../eval_results/kitchen_train_png_gt --checkpoint ../exps/kitchen_gt_train_mlp_1/2023_01_18_00_01_24/checkpoints/ModelParameters/latest.pth
 ```
 
 **(GT geometry; HDR input)**
 
 ``` bash
-CUDA_VISIBLE_DEVICES=2 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47729 training/exp_runner.py --conf confs/kitchen_train_hdr_gt_mlp.conf --scan_id scan1
+python training/exp_runner.py --conf confs/kitchen_hdr_gt_mlp.conf --scan_id trainval
 
-CUDA_VISIBLE_DEVICES=2 python evaluation/eval.py --conf confs/kitchen_train_hdr_gt_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/kitchen_train_HDR_GT --checkpoint ../exps/kitchen_HDR_GT_train_mlp_1/2023_01_18_22_58_00/checkpoints/ModelParameters/latest.pth
+python evaluation/eval.py --conf confs/kitchen_hdr_gt_mlp.conf --scan_id trainval --resolution 512 --eval_rendering --evals_folder ../eval_results/kitchen_train_HDR_GT --checkpoint ../exps/kitchen_HDR_GT_train_mlp_1/2023_01_18_22_58_00/checkpoints/ModelParameters/latest.pth
 ```
 
 **(EST geometry; HDR input)**
 
 ``` bash
-CUDA_VISIBLE_DEVICES=2 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47729 training/exp_runner.py --conf confs/kitchen_train_hdr_est_mlp.conf --scan_id scan1
+python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval
+python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --expname _gamma2_L2loss
+[+] python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --expname _gamma2_L2loss_4xreg_lr1e-4_decay25
 
-CUDA_VISIBLE_DEVICES=2 python evaluation/eval.py --conf confs/kitchen_train_hdr_est_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/kitchen_train_HDR_EST --checkpoint ../exps/kitchen_HDR_EST_train_mlp_1/2023_01_18_22_10_44/checkpoints/ModelParameters/latest.pth
+python evaluation/eval.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --resolution 512 --eval_rendering --evals_folder ../eval_results/kitchen_train_HDR_EST --checkpoint ../exps/kitchen_HDR_EST_train_mlp_1/2023_01_18_22_10_44/checkpoints/ModelParameters/latest.pth
 ```
+
+### other options
+- **gamma in rgb loss**: ``loss{if_gamma_loss = True``
 
 ## [openrooms]
 
 **(GT geometry; PNG input)**
 
 ``` bash
-CUDA_VISIBLE_DEVICES=2 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47729 training/exp_runner.py --conf confs/openrooms_mlp.conf --scan_id scan1
+python training/exp_runner.py --conf confs/openrooms_mlp.conf --scan_id scan1
 
-CUDA_VISIBLE_DEVICES=2 python evaluation/eval.py --conf confs/openrooms_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/openrooms_png_gt --checkpoint ../exps/public_re_3_v3pose_2048-main_xml-scene0008_00_more_gt_train_mlp_1/2023_01_18_01_30_24/checkpoints/ModelParameters/latest.pth
+python evaluation/eval.py --conf confs/openrooms_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/openrooms_png_gt --checkpoint ../exps/public_re_3_v3pose_2048-main_xml-scene0008_00_more_gt_train_mlp_1/2023_01_18_01_30_24/checkpoints/ModelParameters/latest.pth
 ```
 
 **(GT geometry; HDR input)**
@@ -105,17 +116,19 @@ Config:
 ``dataset -> if_hdr = True``
 
 ``` bash
-CUDA_VISIBLE_DEVICES=2 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47729 training/exp_runner.py --conf confs/openrooms_hdr_gt_mlp.conf --scan_id scan1
+python training/exp_runner.py --conf confs/openrooms_hdr_gt_mlp.conf --scan_id scan1
 
-CUDA_VISIBLE_DEVICES=2 python evaluation/eval.py --conf confs/openrooms_hdr_gt_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/openrooms_HDR_GT --checkpoint ../exps/public_re_3_v3pose_2048-main_xml-scene0008_00_more_HDR_GT_train_mlp_1/2023_01_18_21_58_00/checkpoints/ModelParameters/latest.pth
+python evaluation/eval.py --conf confs/openrooms_hdr_gt_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/openrooms_HDR_GT --checkpoint ../exps/public_re_3_v3pose_2048-main_xml-scene0008_00_more_HDR_GT_train_mlp_1/2023_01_18_21_58_00/checkpoints/ModelParameters/latest.pth
 ```
 
 **(EST geometry; HDR input)**
 
 ``` bash
-CUDA_VISIBLE_DEVICES=2 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47729 training/exp_runner.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan1
+python training/exp_runner.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan1
 
-CUDA_VISIBLE_DEVICES=2 python evaluation/eval.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/openrooms_HDR_EST --checkpoint ../exps/public_re_3_v3pose_2048-main_xml-scene0008_00_more_HDR_EST_train_mlp_1/2023_01_18_21_57_14/checkpoints/ModelParameters/latest.pth
+[+] python training/exp_runner.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan1 --expname _gamma2_L2loss_4xreg_lr1e-4_decay25
+
+python evaluation/eval.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/openrooms_HDR_EST --checkpoint ../exps/public_re_3_v3pose_2048-main_xml-scene0008_00_more_HDR_EST_train_mlp_1/2023_01_18_21_57_14/checkpoints/ModelParameters/latest.pth
 ```
 
 # Update
@@ -149,25 +162,25 @@ bash scripts/download_dataset.sh
 Run the following command to train monosdf:
 ```
 cd ./code
-CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf CONFIG  --scan_id SCAN_ID
+python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf CONFIG  --scan_id SCAN_ID
 ```
 where CONFIG is the config file in `code/confs`, and SCAN_ID is the id of the scene to reconstruct.
 
 We provide example commands for training DTU, ScanNet, and Replica dataset as follows:
 ```
 # DTU scan65
-CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/dtu_mlp_3views.conf  --scan_id scan65
+python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/dtu_mlp_3views.conf  --scan_id scan65
 
 # ScanNet scan 1 (scene_0050_00)
-CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/scannet_mlp.conf --scan_id scan1
+python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/scannet_mlp.conf --scan_id scan1
 
 # Replica scan 1 (room0)
-CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/replica_mlp.conf --scan_id scan1
+python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/replica_mlp.conf --scan_id scan1
 ```
 
 We created individual config file on Tanks and Temples dataset so you don't need to set the scan_id. Run training on the courtroom scene as:
 ```
-CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/tnt_mlp_1.conf
+python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/tnt_mlp_1.conf
 ```
 
 We also generated high resolution monocular cues on the courtroom scene and it's better to train with more gpus. First download the dataset
@@ -177,7 +190,7 @@ bash scripts/download_highres_TNT.sh
 
 Then run training with 8 gpus:
 ```
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8 python -m torch.distributed.launch --nproc_per_node 8 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/tnt_highres_grids_courtroom.conf
+CUDA_VISIBLE_DEVICES1,2,3,4,5,6,7,8 python -m torch.distributed.launch --nproc_per_node 8 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/tnt_highres_grids_courtroom.conf
 ```
 Of course, you can also train on all other scenes with multi-gpus.
 
@@ -239,7 +252,7 @@ python extract_monocular_cues.py --task normal --img_path ../data/Apartment/scan
 
 Finally, we train monosdf as
 ```
-CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/nice_slam_grids.conf
+python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/nice_slam_grids.conf
 ```
 
 # Pretrained Models
@@ -281,7 +294,7 @@ python generate_high_res_map.py --mode merge_patches
 
 Now you can train the model with
 ```
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8 python -m torch.distributed.launch --nproc_per_node 8 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/tnt_highres_grids_courtroom.conf
+CUDA_VISIBLE_DEVICES1,2,3,4,5,6,7,8 python -m torch.distributed.launch --nproc_per_node 8 --nnodes=1 --node_rank=0 training/exp_runner.py --conf confs/tnt_highres_grids_courtroom.conf
 ```
 
 Please note that the script for generating high-resolution cues only works for the Tanks and Temples dataset. You need to adapt it if you want to apply to other dataset.

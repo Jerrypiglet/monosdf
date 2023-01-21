@@ -12,7 +12,8 @@ import json
 
 def load_K_Rt_from_P(filename, P=None):
     if P is None:
-        lines = open(filename).read().splitlines()
+        with open(filename) as f:
+            lines = f.read().splitlines()
         if len(lines) == 4:
             lines = lines[1:]
         lines = [[x[0], x[1], x[2], x[3]] for x in (x.split(" ") for x in lines)]
@@ -40,7 +41,8 @@ def glob_data(data_dir):
     return data_paths
 
 def load(config_file):
-    tmp_json = json.load(open(config_file))
+    with open(config_file) as f:
+        tmp_json = json.load(f)
     extrinsic = np.array(tmp_json["extrinsic"]).reshape(4, 4).T
     pose = np.linalg.inv(extrinsic)
     return pose    
@@ -82,14 +84,16 @@ def render_scan(scan_id, mesh, out_path):
 
         K = intrinsics_all[0].copy()
         K[:2, :] *= 2.
-     
-        tmp_json = json.load(open('c1.json'))
+
+        with open('c1.json') as f:
+            tmp_json = json.load()
         tmp_json["extrinsic"] = w2c.T.reshape(-1).tolist()
         
         tmp_json["intrinsic"]["intrinsic_matrix"] = K[:3,:3].T.reshape(-1).tolist()
         tmp_json["intrinsic"]["height"] = H 
-        tmp_json["intrinsic"]["width"] = W 
-        json.dump(tmp_json, open('video_poses/tmp%d.json'%(image_id), 'w'), indent=4)
+        tmp_json["intrinsic"]["width"] = W
+        with open('video_poses/tmp%d.json'%(image_id), 'w') as f:
+            json.dump(tmp_json, f, indent=4)
     
     cmd = f"python render_trajectory_open3d.py {mesh} \"{out_path}\" {camera_config}"
     os.system(cmd)

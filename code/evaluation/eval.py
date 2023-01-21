@@ -92,8 +92,8 @@ def evaluate(**kwargs):
         mesh_folder = evals_folder_name
         utils.mkdir_ifnotexists(mesh_folder)
         
-        print('-- exporting mesh to %s...'%'{0}/{1}-{2}.ply'.format(mesh_folder, mesh_folder, scan_id))
-        mesh.export('{0}/{1}-{2}.ply'.format(mesh_folder, mesh_folder, scan_id), 'ply')
+        print('-- exporting mesh to %s...'%'{0}/{1}-{2}.ply'.format(mesh_folder, evals_folder_name.split('/')[-1], scan_id))
+        mesh.export('{0}/{1}-{2}.ply'.format(mesh_folder, evals_folder_name.split('/')[-1], scan_id), 'ply')
 
     if eval_rendering:
         images_dir = '{0}/rendering'.format(evals_folder_name)

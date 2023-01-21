@@ -38,7 +38,8 @@ def load_rgb(path, normalize_rgb = False):
 
 def load_K_Rt_from_P(filename, P=None):
     if P is None:
-        lines = open(filename).read().splitlines()
+        with open(filename) as f:
+            lines = f.read().splitlines()
         if len(lines) == 4:
             lines = lines[1:]
         lines = [[x[0], x[1], x[2], x[3]] for x in (x.split(" ") for x in lines)]

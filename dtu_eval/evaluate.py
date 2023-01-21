@@ -60,3 +60,5 @@ for exp in exp_names:
             
             evaluation_txt_file.write(f"{exp},{scan},{iter_num},{output}")
             evaluation_txt_file.flush()
+
+evaluation_txt_file.close()

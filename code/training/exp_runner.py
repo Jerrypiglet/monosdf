@@ -7,6 +7,8 @@ import torch
 import os
 from training.monosdf_train import MonoSDFTrainRunner
 import datetime
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 if __name__ == '__main__':
 
@@ -26,7 +28,8 @@ if __name__ == '__main__':
     parser.add_argument('--scan_id', type=str, default='', help='If set, taken to be the scan id.')
     parser.add_argument('--cancel_vis', default=False, action="store_true",
                         help='If set, cancel visualization in intermediate epochs.')
-    parser.add_argument("--local_rank", type=int, required=True, help='local rank for DistributedDataParallel')
+    parser.add_argument("--local_rank", type=int, required=False, help='local rank for DistributedDataParallel', default=0)
+    parser.add_argument('--is_distributed', default=False, action="store_true", help='')
 
     opt = parser.parse_args()
 
@@ -40,6 +43,7 @@ if __name__ == '__main__':
     '''
     gpu = opt.local_rank
 
+
     # set distributed training
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
         rank = int(os.environ["RANK"])
@@ -49,9 +53,11 @@ if __name__ == '__main__':
         rank = -1
         world_size = -1
 
-    torch.cuda.set_device(opt.local_rank)
-    torch.distributed.init_process_group(backend='nccl', init_method='env://', world_size=world_size, rank=rank, timeout=datetime.timedelta(1, 1800))
-    torch.distributed.barrier()
+    if_distributed = world_size > 1 and opt.is_distributed
+    if if_distributed:
+        torch.cuda.set_device(opt.local_rank)
+        torch.distributed.init_process_group(backend='nccl', init_method='env://', world_size=world_size, rank=rank, timeout=datetime.timedelta(1, 1800))
+        torch.distributed.barrier()
 
 
     trainrunner = MonoSDFTrainRunner(conf=opt.conf,
@@ -61,6 +67,7 @@ if __name__ == '__main__':
                                     gpu_index=gpu,
                                     exps_folder_name=opt.exps_folder,
                                     is_continue=opt.is_continue,
+                                    if_distributed=if_distributed, 
                                     timestamp=opt.timestamp,
                                     checkpoint=opt.checkpoint,
                                     scan_id=opt.scan_id,

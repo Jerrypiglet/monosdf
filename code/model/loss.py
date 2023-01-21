@@ -150,6 +150,7 @@ class MonoSDFLoss(nn.Module):
                  depth_weight = 0.1,
                  normal_l1_weight = 0.05,
                  normal_cos_weight = 0.05,
+                 if_gamma_loss = False, 
                  end_step = -1):
         super().__init__()
         self.eikonal_weight = eikonal_weight
@@ -158,6 +159,8 @@ class MonoSDFLoss(nn.Module):
         self.normal_l1_weight = normal_l1_weight
         self.normal_cos_weight = normal_cos_weight
         self.rgb_loss = utils.get_class(rgb_loss)(reduction='mean')
+
+        self.if_gamma_loss = if_gamma_loss
         
         self.depth_loss = ScaleAndShiftInvariantLoss(alpha=0.5, scales=1)
         
@@ -165,6 +168,14 @@ class MonoSDFLoss(nn.Module):
         
         self.step = 0
         self.end_step = end_step
+
+    def gamma2(self, x):
+        mask = x <= 0.0031308
+        ret = torch.empty_like(x)
+        ret[mask] = 12.92*x[mask]
+        mask = ~mask
+        ret[mask] = 1.055*x[mask].pow(1/2.4) - 0.055
+        return ret
 
     def get_rgb_loss(self,rgb_values, rgb_gt):
         rgb_gt = rgb_gt.reshape(-1, 3)
@@ -205,7 +216,11 @@ class MonoSDFLoss(nn.Module):
         depth_pred = model_outputs['depth_values']
         normal_pred = model_outputs['normal_map'][None]
         
-        rgb_loss = self.get_rgb_loss(model_outputs['rgb_values'], rgb_gt)
+        # assert self.if_gamma_loss
+        if self.if_gamma_loss:
+            rgb_loss = self.get_rgb_loss(self.gamma2(model_outputs['rgb_values']), self.gamma2(rgb_gt))
+        else:
+            rgb_loss = self.get_rgb_loss(model_outputs['rgb_values'], rgb_gt)
         
         if 'grad_theta' in model_outputs:
             eikonal_loss = self.get_eikonal_loss(model_outputs['grad_theta'])
