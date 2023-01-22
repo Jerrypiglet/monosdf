@@ -35,12 +35,14 @@ class MonoSDFTrainRunner():
         self.if_distributed = kwargs['if_distributed']
 
         self.expname = self.opt.expname_pre + self.conf.get_string('train.expname') + kwargs['expname']
-        if self.opt.resume != '':
-            self.expname = self.opt.resume
 
         scan_id = kwargs['scan_id'] if kwargs['scan_id'] != '' else self.conf.get_string('dataset.scan_id', default='')
         if scan_id != '':
             self.expname = self.expname + '_{0}'.format(scan_id)
+
+        if self.opt.resume != '':
+            self.expname = self.opt.resume
+            kwargs['is_continue'] = True
 
         if kwargs['is_continue'] and kwargs['timestamp'] == 'latest':
             if os.path.exists(os.path.join('../',kwargs['exps_folder_name'], self.expname)):
@@ -115,12 +117,12 @@ class MonoSDFTrainRunner():
 
         assert self.val_dataset.if_pixel == False
 
-        self.max_total_iters = self.conf.get_int('train.max_total_iters', default=500000)
-        self.ds_len = len(self.train_dataset)
-        print('Finish loading data. Data-set size: {0}'.format(self.ds_len))
+        self.max_total_iters = self.conf.get_int('train.max_total_iters', default=2000000)
+        self.ds_len = len(self.train_dataset) if not if_pixel_train else self.train_dataset.n_images
+        print('Finish loading data. Dataset size: {0}'.format(self.ds_len))
         if ('scan' in scan_id and (int(scan_id[4:]) < 24 and int(scan_id[4:]) > 0)) or (not 'scan' in scan_id): # BlendedMVS, running for 200k iterations
-            if not if_pixel_train:
-                self.nepochs = int(self.max_total_iters / self.ds_len)
+            # if not if_pixel_train:
+            self.nepochs = int(self.max_total_iters / self.ds_len)
         print('RUNNING FOR {0}'.format(self.nepochs))
         assert self.nepochs > 0
 
@@ -333,7 +335,7 @@ class MonoSDFTrainRunner():
                 
                 model_outputs = self.model(model_input, indices, if_pixel_input=if_pixel_train)
                 
-                loss_output = self.loss(model_outputs, ground_truth)
+                loss_output = self.loss(model_outputs, ground_truth, if_pixel_input=if_pixel_train)
                 loss = loss_output['loss']
                 loss.backward()
                 self.optimizer.step()
@@ -380,7 +382,7 @@ class MonoSDFTrainRunner():
                         self.writer.add_scalar('Statistics/lr1', self.optimizer.param_groups[1]['lr'], self.iter_step)
                         self.writer.add_scalar('Statistics/lr2', self.optimizer.param_groups[2]['lr'], self.iter_step)
                 
-                self.train_dataset.change_sampling_idx(self.num_pixels)
+                # self.train_dataset.change_sampling_idx(self.num_pixels)
                 self.scheduler.step()
 
             print('== Training epoch %d with train_dataloader... DONE'%epoch)

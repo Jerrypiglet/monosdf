@@ -1,6 +1,12 @@
 import sys
 
-sys.path.append('../code')
+# sys.path.append('../code')
+import os, sys, inspect
+from pathlib import Path
+pwd_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+sys.path.insert(0, pwd_path)
+sys.path.insert(0, str(Path(pwd_path).parent.absolute()))
+
 import argparse
 import torch
 

@@ -26,6 +26,28 @@ def compute_scale_and_shift(prediction, target, mask):
 
     return x_0, x_1
 
+def compute_scale_and_shift_1D(prediction, target, mask):
+    # system matrix: A = [[a_00, a_01], [a_10, a_11]]
+    a_00 = torch.sum(mask * prediction * prediction, 1)
+    a_01 = torch.sum(mask * prediction, 1)
+    a_11 = torch.sum(mask, 1)
+
+    # right hand side: b = [b_0, b_1]
+    b_0 = torch.sum(mask * prediction * target, 1)
+    b_1 = torch.sum(mask * target, 1)
+
+    # solution: x = A^-1 . b = [[a_11, -a_01], [-a_10, a_00]] / (a_00 * a_11 - a_01 * a_10) . b
+    x_0 = torch.zeros_like(b_0)
+    x_1 = torch.zeros_like(b_1)
+
+    det = a_00 * a_11 - a_01 * a_01
+    valid = det.nonzero()
+
+    x_0[valid] = (a_11[valid] * b_0[valid] - a_01[valid] * b_1[valid]) / det[valid]
+    x_1[valid] = (-a_01[valid] * b_0[valid] + a_00[valid] * b_1[valid]) / det[valid]
+
+    return x_0, x_1
+
 
 def reduction_batch_based(image_loss, M):
     # average of all valid pixels of the batch
@@ -50,11 +72,16 @@ def reduction_image_based(image_loss, M):
     return torch.mean(image_loss)
 
 
-def mse_loss(prediction, target, mask, reduction=reduction_batch_based):
+def mse_loss(prediction, target, mask, reduction=reduction_batch_based, if_pixel_input=False):
 
-    M = torch.sum(mask, (1, 2))
-    res = prediction - target
-    image_loss = torch.sum(mask * res * res, (1, 2))
+    if if_pixel_input:
+        M = torch.sum(mask, 1)
+        res = prediction - target
+        image_loss = torch.sum(mask * res * res, 1)
+    else:
+        M = torch.sum(mask, (1, 2))
+        res = prediction - target
+        image_loss = torch.sum(mask * res * res, (1, 2))
 
     return reduction(image_loss, 2 * M)
 
@@ -88,8 +115,8 @@ class MSELoss(nn.Module):
         else:
             self.__reduction = reduction_image_based
 
-    def forward(self, prediction, target, mask):
-        return mse_loss(prediction, target, mask, reduction=self.__reduction)
+    def forward(self, prediction, target, mask, if_pixel_input=False):
+        return mse_loss(prediction, target, mask, reduction=self.__reduction, if_pixel_input=if_pixel_input)
 
 
 class GradientLoss(nn.Module):
@@ -125,13 +152,14 @@ class ScaleAndShiftInvariantLoss(nn.Module):
 
         self.__prediction_ssi = None
 
-    def forward(self, prediction, target, mask):
+    def forward(self, prediction, target, mask, if_pixel_input=False):
 
-        scale, shift = compute_scale_and_shift(prediction, target, mask)
-        self.__prediction_ssi = scale.view(-1, 1, 1) * prediction + shift.view(-1, 1, 1)
+        scale, shift = compute_scale_and_shift_1D(prediction, target, mask)
+        # [TODO] make target simply (N,) instead of (1, N)
+        self.__prediction_ssi = scale.view(1, -1) * prediction + shift.view(1, -1)
 
-        total = self.__data_loss(self.__prediction_ssi, target, mask)
-        if self.__alpha > 0:
+        total = self.__data_loss(self.__prediction_ssi, target, mask, if_pixel_input=if_pixel_input)
+        if self.__alpha > 0 and not if_pixel_input: # 'gradient loss not supported for pixel batch mode'
             total += self.__alpha * self.__regularization_loss(self.__prediction_ssi, target, mask)
 
         return total
@@ -148,6 +176,7 @@ class MonoSDFLoss(nn.Module):
                  eikonal_weight, 
                  smooth_weight = 0.005,
                  depth_weight = 0.1,
+                 depth_alpha = 0.5, 
                  normal_l1_weight = 0.05,
                  normal_cos_weight = 0.05,
                  if_gamma_loss = False, 
@@ -162,7 +191,7 @@ class MonoSDFLoss(nn.Module):
 
         self.if_gamma_loss = if_gamma_loss
         
-        self.depth_loss = ScaleAndShiftInvariantLoss(alpha=0.5, scales=1)
+        self.depth_loss = ScaleAndShiftInvariantLoss(alpha=depth_alpha, scales=1)
         
         print(f"using weight for loss RGB_1.0 EK_{self.eikonal_weight} SM_{self.smooth_weight} Depth_{self.depth_weight} NormalL1_{self.normal_l1_weight} NormalCos_{self.normal_cos_weight}")
         
@@ -196,9 +225,11 @@ class MonoSDFLoss(nn.Module):
         smooth_loss =  torch.norm(normals_1 - normals_2, dim=-1).mean()
         return smooth_loss
     
-    def get_depth_loss(self, depth_pred, depth_gt, mask):
-        # TODO remove hard-coded scaling for depth
-        return self.depth_loss(depth_pred.reshape(1, 32, 32), (depth_gt * 50 + 0.5).reshape(1, 32, 32), mask.reshape(1, 32, 32))
+    def get_depth_loss(self, depth_pred, depth_gt, mask, if_pixel_input=False):
+        # [Fixed by Rui] remove hard-coded scaling for depth; depth_pred (1024, 1), depth_gt (1, 1024, 1)
+        # return self.depth_loss(depth_pred.reshape(1, 32, 32), (depth_gt * 50 + 0.5).reshape(1, 32, 32), mask.reshape(1, 32, 32))
+        # import ipdb; ipdb.set_trace()
+        return self.depth_loss(depth_pred.reshape(1, -1), (depth_gt * 50 + 0.5).reshape(1, -1), mask.reshape(1, -1), if_pixel_input=if_pixel_input)
         
     def get_normal_loss(self, normal_pred, normal_gt):
         normal_gt = torch.nn.functional.normalize(normal_gt, p=2, dim=-1)
@@ -207,7 +238,7 @@ class MonoSDFLoss(nn.Module):
         cos = (1. - torch.sum(normal_pred * normal_gt, dim = -1)).mean()
         return l1, cos
         
-    def forward(self, model_outputs, ground_truth):
+    def forward(self, model_outputs, ground_truth, if_pixel_input=False):
         rgb_gt = ground_truth['rgb'].cuda()
         # monocular depth and normal
         depth_gt = ground_truth['depth'].cuda()
@@ -232,7 +263,7 @@ class MonoSDFLoss(nn.Module):
         # combine with GT
         mask = (ground_truth['mask'] > 0.5).cuda() & mask
 
-        depth_loss = self.get_depth_loss(depth_pred, depth_gt, mask)
+        depth_loss = self.get_depth_loss(depth_pred, depth_gt, mask, if_pixel_input=if_pixel_input)
         if isinstance(depth_loss, float):
             depth_loss = torch.tensor(0.0).cuda().float()    
         
