@@ -6,6 +6,7 @@ import sys
 import torch
 from tqdm import tqdm
 import numpy as np
+import math
 
 import utils.general as utils
 import utils.plots as plt
@@ -89,6 +90,7 @@ class MonoSDFTrainRunner():
             dataset_conf['scan_id'] = kwargs['scan_id']
 
         self.train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', **dataset_conf)
+        if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
 
         val_frame_num = dataset_conf.get('val_frame_num', -1)
         val_frame_idx_input = dataset_conf.get('val_frame_idx_input', [])
@@ -100,15 +102,19 @@ class MonoSDFTrainRunner():
             self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='val', **dataset_conf)
             shuffle_val = False
 
+        assert self.val_dataset.if_pixel == False
+
         self.max_total_iters = self.conf.get_int('train.max_total_iters', default=500000)
         self.ds_len = len(self.train_dataset)
         print('Finish loading data. Data-set size: {0}'.format(self.ds_len))
         if ('scan' in scan_id and (int(scan_id[4:]) < 24 and int(scan_id[4:]) > 0)) or (not 'scan' in scan_id): # BlendedMVS, running for 200k iterations
-            self.nepochs = int(self.max_total_iters / self.ds_len)
-            print('RUNNING FOR {0}'.format(self.nepochs))
+            if not if_pixel_train:
+                self.nepochs = int(self.max_total_iters / self.ds_len)
+        print('RUNNING FOR {0}'.format(self.nepochs))
+        assert self.nepochs > 0
 
         self.train_dataloader = torch.utils.data.DataLoader(self.train_dataset,
-                                                            batch_size=self.batch_size,
+                                                            batch_size=self.batch_size if not if_pixel_train else self.conf.get_int('train.num_pixels'),
                                                             shuffle=True,
                                                             collate_fn=self.train_dataset.collate_fn,
                                                             num_workers=8)
@@ -217,16 +223,20 @@ class MonoSDFTrainRunner():
             self.writer = SummaryWriter(log_dir=os.path.join(self.plots_dir, 'logs'))
             print('writing logs to ->', os.path.join(self.plots_dir, 'logs'))
 
-        if 'if_hdr' in self.conf.get_config('dataset'):
-            if_hdr = self.conf.get_config('dataset')['if_hdr']
-        else:
-            if_hdr = False
+        # if 'if_hdr' in self.conf.get_config('dataset'):
+        if_hdr = self.conf.get_config('dataset').get('if_hdr', False)
+        # else:
+        #     if_hdr = False
 
         # self.iter_step = 0
         for epoch in range(self.start_epoch, self.nepochs + 1):
 
             if self.GPU_INDEX == 0 and epoch % self.checkpoint_freq == 0:
                 self.save_checkpoints(epoch, self.iter_step)
+
+            '''
+            VAL
+            '''
 
             if self.GPU_INDEX == 0 and self.do_vis and epoch % self.plot_freq == 0:
                 self.model.eval()
@@ -238,20 +248,20 @@ class MonoSDFTrainRunner():
                 print('== Evaluating epoch %d plot_dataloader (%d batches)...'%(epoch, len(self.plot_dataloader)))
 
                 # exporting mesh from SDF
-                mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
-                print('- Exporting mesh to %s...'%mesh_path)
-                with torch.no_grad():
-                    mesh = get_surface_sliding(path=self.plots_dir, 
-                                epoch=epoch, 
-                                sdf=lambda x: implicit_network(x)[:, 0], 
-                                resolution=self.plot_conf.get('resolution'), 
-                                grid_boundary=self.plot_conf.get('grid_boundary'), 
-                                level=0,  
-                                return_mesh=True,  
-                                )
-                print('-> Exported.')
-                # utils.mkdir_ifnotexists(self.plots_dir)
-                mesh.export(mesh_path, 'ply')
+                # mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
+                # print('- Exporting mesh to %s...'%mesh_path)
+                # with torch.no_grad():
+                #     mesh = get_surface_sliding(path=self.plots_dir, 
+                #                 epoch=epoch, 
+                #                 sdf=lambda x: implicit_network(x)[:, 0], 
+                #                 resolution=self.plot_conf.get('resolution'), 
+                #                 grid_boundary=self.plot_conf.get('grid_boundary'), 
+                #                 level=0,  
+                #                 return_mesh=True,  
+                #                 )
+                # print('-> Exported.')
+                # # utils.mkdir_ifnotexists(self.plots_dir)
+                # mesh.export(mesh_path, 'ply')
 
                 # indices, model_input, ground_truth = next(iter(self.plot_dataloader))
                 for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(self.plot_dataloader)):
@@ -290,18 +300,27 @@ class MonoSDFTrainRunner():
 
                 self.model.train()
 
+            '''
+            TRAIN
+            '''
+
             self.train_dataset.change_sampling_idx(self.num_pixels)
+            if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
 
             print('== Training epoch %d (up to %d) with train_dataloader...'%(epoch, self.nepochs))
 
             for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(self.train_dataloader)):
-                model_input["intrinsics"] = model_input["intrinsics"].cuda()
-                model_input["uv"] = model_input["uv"].cuda()
-                model_input['pose'] = model_input['pose'].cuda()
+                '''
+                indices: image idxes
+                '''
+                model_input = {k: v.cuda() if type(v)==torch.Tensor else v for k, v in model_input.items()}
+                # model_input["intrinsics"] = model_input["intrinsics"].cuda()
+                # model_input["uv"] = model_input["uv"].cuda()
+                # model_input['pose'] = model_input['pose'].cuda()
                 
                 self.optimizer.zero_grad()
                 
-                model_outputs = self.model(model_input, indices)
+                model_outputs = self.model(model_input, indices, if_pixel_input=if_pixel_train)
                 
                 loss_output = self.loss(model_outputs, ground_truth)
                 loss = loss_output['loss']
@@ -343,6 +362,7 @@ class MonoSDFTrainRunner():
                     self.writer.add_scalar('Statistics/beta', self.model.module.density.get_beta().item() if self.if_distributed else self.model.density.get_beta().item(), self.iter_step)
                     self.writer.add_scalar('Statistics/alpha', 1. / self.model.module.density.get_beta().item() if self.if_distributed else 1. / self.model.density.get_beta().item(), self.iter_step)
                     self.writer.add_scalar('Statistics/psnr', psnr.item(), self.iter_step)
+                    self.writer.add_scalar('Statistics/epoch', epoch, self.iter_step)
                     
                     if self.Grid_MLP:
                         self.writer.add_scalar('Statistics/lr0', self.optimizer.param_groups[0]['lr'], self.iter_step)

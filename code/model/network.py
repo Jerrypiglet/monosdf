@@ -76,17 +76,17 @@ class ImplicitNetwork(nn.Module):
 
         self.softplus = nn.Softplus(beta=100)
 
-    def forward(self, input):
+    def forward(self, input_dict):
         if self.embed_fn is not None:
-            input = self.embed_fn(input)
+            input_dict = self.embed_fn(input_dict)
 
-        x = input
+        x = input_dict
 
         for l in range(0, self.num_layers - 1):
             lin = getattr(self, "lin" + str(l))
 
             if l in self.skip_in:
-                x = torch.cat([x, input], 1) / np.sqrt(2)
+                x = torch.cat([x, input_dict], 1) / np.sqrt(2)
 
             x = lin(x)
 
@@ -241,26 +241,26 @@ class ImplicitNetworkGrid(nn.Module):
         self.softplus = nn.Softplus(beta=100)
         self.cache_sdf = None
 
-    def forward(self, input):
+    def forward(self, input_dict):
         if self.use_grid_feature:
             # normalize point range as encoding assume points are in [-1, 1]
-            feature = self.encoding(input / self.divide_factor)
+            feature = self.encoding(input_dict / self.divide_factor)
         else:
-            feature = torch.zeros_like(input[:, :1].repeat(1, self.grid_feature_dim))
+            feature = torch.zeros_like(input_dict[:, :1].repeat(1, self.grid_feature_dim))
                     
         if self.embed_fn is not None:
-            embed = self.embed_fn(input)
-            input = torch.cat((embed, feature), dim=-1)
+            embed = self.embed_fn(input_dict)
+            input_dict = torch.cat((embed, feature), dim=-1)
         else:
-            input = torch.cat((input, feature), dim=-1)
+            input_dict = torch.cat((input_dict, feature), dim=-1)
 
-        x = input
+        x = input_dict
 
         for l in range(0, self.num_layers - 1):
             lin = getattr(self, "lin" + str(l))
 
             if l in self.skip_in:
-                x = torch.cat([x, input], 1) / np.sqrt(2)
+                x = torch.cat([x, input_dict], 1) / np.sqrt(2)
 
             x = lin(x)
 
@@ -369,7 +369,7 @@ class RenderingNetwork(nn.Module):
         self.relu = nn.ReLU()
         self.sigmoid = torch.nn.Sigmoid()
 
-    def forward(self, points, normals, view_dirs, feature_vectors, indices):
+    def forward(self, points, normals, view_dirs, feature_vectors, indices, if_pixel_input=False):
         if self.embedview_fn is not None:
             view_dirs = self.embedview_fn(view_dirs)
 
@@ -381,7 +381,18 @@ class RenderingNetwork(nn.Module):
             raise NotImplementedError
 
         if self.per_image_code:
-            image_code = self.embeddings[indices].expand(rendering_input.shape[0], -1)
+            '''
+            self.embeddings: (max_images, D)
+            rendering_input.shape: (num_images*num_pixes, D')
+
+            if_pixel_input = False: indices: (num_images)
+            if_pixel_input = True: indices: (num_images)
+            '''
+            if not if_pixel_input:
+                image_code = self.embeddings[indices].expand(rendering_input.shape[0], -1) # (num_images=1, D) -> (num_images=1*num_pixels*num_samples), D) -> 
+            else:
+                num_samples = rendering_input.shape[0] // indices.shape[0]
+                image_code = self.embeddings[indices].unsqueeze(1).expand(-1, num_samples, -1).flatten(0, 1) # (num_pixels, D) -> (num_pixels*num_samples, D)
             rendering_input = torch.cat([rendering_input, image_code], dim=-1)
             
         x = rendering_input
@@ -424,37 +435,51 @@ class MonoSDFNetwork(nn.Module):
         self.ray_sampler = ErrorBoundSampler(self.scene_bounding_sphere, **conf.get_config('ray_sampler'))
         
 
-    def forward(self, input, indices):
+    def forward(self, input_dict, indices, if_pixel_input=False):
         # Parse model input
-        intrinsics = input["intrinsics"]
-        uv = input["uv"]
-        pose = input["pose"]
+        if not if_pixel_input:
+            intrinsics = input_dict["intrinsics"]
+            uv = input_dict["uv"]
+            pose = input_dict["pose"]
 
-        ray_dirs, cam_loc = rend_util.get_camera_params(uv, pose, intrinsics)
-        
-        # we should use unnormalized ray direction for depth
-        ray_dirs_tmp, _ = rend_util.get_camera_params(uv, torch.eye(4).to(pose.device)[None], intrinsics)
+            ray_dirs, cam_loc = rend_util.get_camera_params(uv, pose, intrinsics)
+            # ray_dirs, cam_loc = ray_dirs.cuda(), cam_loc.cuda()
+            
+            # we should use unnormalized ray direction for depth
+            ray_dirs_tmp, _ = rend_util.get_camera_params(uv, torch.eye(4).to(pose.device)[None], intrinsics)
+            # ray_dirs_tmp = ray_dirs_tmp.cuda() # (batch_size, N_pixels_sample, 2)
+
+            cam_loc = cam_loc.unsqueeze(1).repeat(1, ray_dirs.shape[1], 1).reshape(-1, 3)
+        else:
+            ray_dirs = input_dict['ray_dirs'].unsqueeze(0) # (1, N_pixels, 3)
+            cam_loc = input_dict['ray_cam_loc'] # (N_pixels, 3)
+            ray_dirs_tmp = input_dict['ray_dirs_tmp'].unsqueeze(0) # (1, N_pixels, 3)
+            
         depth_scale = ray_dirs_tmp[0, :, 2:]
         
         batch_size, num_pixels, _ = ray_dirs.shape
 
-        cam_loc = cam_loc.unsqueeze(1).repeat(1, num_pixels, 1).reshape(-1, 3)
         ray_dirs = ray_dirs.reshape(-1, 3)
 
         
         z_vals, z_samples_eik = self.ray_sampler.get_z_vals(ray_dirs, cam_loc, self)
         N_samples = z_vals.shape[1]
 
-        points = cam_loc.unsqueeze(1) + z_vals.unsqueeze(2) * ray_dirs.unsqueeze(1)
-        points_flat = points.reshape(-1, 3)
-
+        points = cam_loc.unsqueeze(1) + z_vals.unsqueeze(2) * ray_dirs.unsqueeze(1) # (1024, 1, 3) + (1024, 98, 1) * (1024, 1, 3)
+        points_flat = points.reshape(-1, 3) # (1024, N_samples, 3) -> (1024*N_samples, 3)
 
         dirs = ray_dirs.unsqueeze(1).repeat(1,N_samples,1)
         dirs_flat = dirs.reshape(-1, 3)
 
         sdf, feature_vectors, gradients = self.implicit_network.get_outputs(points_flat)
         
-        rgb_flat = self.rendering_network(points_flat, gradients, dirs_flat, feature_vectors, indices)
+        '''
+        if_pixel_input=False: indices.shape = (batch_size)
+        if_pixel_input=True: indices.shape = (batch_size, num_pixels)
+        '''
+
+        # points_flat: (N_pixels*N_samples, 3)
+        rgb_flat = self.rendering_network(points_flat, gradients, dirs_flat, feature_vectors, indices, if_pixel_input=if_pixel_input)
         rgb = rgb_flat.reshape(-1, N_samples, 3)
 
         weights = self.volume_rendering(z_vals, sdf)
@@ -505,9 +530,19 @@ class MonoSDFNetwork(nn.Module):
         normal_map = torch.sum(weights.unsqueeze(-1) * normals, 1)
         
         # transform to local coordinate system
-        rot = pose[0, :3, :3].permute(1, 0).contiguous()
-        normal_map = rot @ normal_map.permute(1, 0)
-        normal_map = normal_map.permute(1, 0).contiguous()
+        if if_pixel_input:
+            rot = input_dict['ray_pose'][:, :3, :3].transpose(1, 2)
+            normal_map = (rot @ normal_map.unsqueeze(-1)).squeeze(-1) # (N, 3)
+        else:
+            # normal_map_ = normal_map.clone()
+
+            rot = pose[0, :3, :3].permute(1, 0).contiguous() # (3, 3)
+            normal_map = rot @ normal_map.permute(1, 0) # ((3, 3) @ (3, N)).T = (N, 3) @ rot (3,3)
+            normal_map = normal_map.permute(1, 0).contiguous()
+
+            # rot = pose[0:1, :3, :3].expand(normal_map_.shape[0], -1, -1).transpose(1, 2) # (N, 3, 3)
+            # normal_map_ = (rot @ normal_map_.unsqueeze(-1)).squeeze(-1) # (N, 3)
+
         
         output['normal_map'] = normal_map
 

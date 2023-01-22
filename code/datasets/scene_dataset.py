@@ -136,6 +136,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 img_res,
                 scan_id: str='scan0',
                 if_hdr=False, # if load HDR images (e.g. OpenRooms, kitchen)
+                if_pixel=False, # if return batch of random pixels
                 if_gt_data=True, 
                 center_crop_type='xxxx',
                 use_mask=False,
@@ -160,6 +161,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         self.train_frame_idx_input = train_frame_idx_input
 
         self.if_hdr = if_hdr
+        self.if_pixel = if_pixel and self.split == 'train'
         
         assert os.path.exists(self.instance_dir), "Data directory is empty: %s"%self.instance_dir
 
@@ -181,6 +183,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         else:
             self.image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_rgb.png" if not self.if_hdr else "image/*.exr"))
         self.image_paths.sort()
+        # self.image_paths = self.image_paths[:15] # for faster debugging only
         self.filenames = [Path(_).stem.replace('_rgb', '') for _ in self.image_paths] # ['000000', '000001', '000002', ...]
 
         # check: 0-based; incremental order; no missing frames
@@ -315,6 +318,43 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 mask = np.load(path)
                 self.mask_images.append(torch.from_numpy(mask.reshape(-1, 1)).float())
 
+        # get global uv
+        uv = np.mgrid[0:self.img_res[0], 0:self.img_res[1]].astype(np.int32)
+        uv = torch.from_numpy(np.flip(uv, axis=0).copy()).float()
+        self.uv = uv.reshape(2, -1).transpose(1, 0) # (HW, 2)
+
+        if self.if_pixel:
+            self.convert_to_pixels()
+
+    def convert_to_pixels(self):
+        # intrinsics = input["intrinsics"]
+        # uv = input["uv"]
+        # pose = input["pose"]
+        # for intrinsics, pose in zip(self.intrinsics_all, self.pose_all): # (4, 4), (4, 4)
+        pose_all_tensor = torch.stack(self.pose_all) # (N, 4, 4)
+        intrinsics_all_tensor = torch.stack(self.intrinsics_all) # (N, 4, 4)
+        _N = pose_all_tensor.shape[0]
+        uv_all_tensor = self.uv.unsqueeze(0).expand(_N, -1, -1) # (N, HW, 2)
+        _HW = uv_all_tensor.shape[1]
+
+        # generate rays for pixels **in each split**
+        ray_dirs, cam_loc = rend_util.get_camera_params(uv_all_tensor, pose_all_tensor, intrinsics_all_tensor) # (N, HW, 3), (N, 3)
+        self.ray_dirs = ray_dirs[self.frame_idx_list].reshape(-1, 3) # (NHW, 3)
+        self.ray_cam_loc = cam_loc.unsqueeze(1).expand(-1, _HW, -1)[self.frame_idx_list].view(-1, 3) # (N, HW, 3) -> (N'HW, 3)
+
+        # we should use unnormalized ray direction for depth
+        ray_dirs_tmp, _ = rend_util.get_camera_params(uv_all_tensor, torch.eye(4)[None].expand(_N, -1, -1), intrinsics_all_tensor) # (N, HW, 3)
+        self.ray_dirs_tmp = ray_dirs_tmp[self.frame_idx_list].reshape(-1, 3) # (N'HW, 3)
+
+        self.ray_rgb = torch.stack(self.rgb_images)[self.frame_idx_list].view(-1, 3) # (N, HW, 3) -> (N'HW, 3)
+        self.ray_depth = torch.stack(self.depth_images)[self.frame_idx_list].view(-1, 1) # (N, HW, 3) -> (N'HW, 1)
+        self.ray_mask = torch.stack(self.mask_images)[self.frame_idx_list].view(-1, 1) # (N, HW, 3) -> (N'HW, 1)
+        self.ray_normal = torch.stack(self.normal_images)[self.frame_idx_list].view(-1, 3) # (N, HW, 3) -> (N'HW, 3)
+
+        # self.ray_frame_idx = torch.arange(0, _N, dtype=torch.int32).unsqueeze(-1).expand(-1, _HW).flatten()
+        self.ray_frame_idx = np.repeat(np.arange(_N, dtype=np.int32).reshape(-1, 1), _HW, 1).flatten()
+        self.ray_pose = pose_all_tensor.unsqueeze(1).expand(-1, _HW, -1, -1)[self.frame_idx_list].view(-1, 4, 4) # (N, HW, 4, 4) -> (N'HW, 4, 4)
+
     def sample_frames(self):
         '''
         frame_idx in [0, ..., total_frame_num-1]
@@ -366,53 +406,79 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         #     return self.n_images
         # else:
         #     return 1
-        if self.if_sample_frames:
-            if self.split == 'train':
-                return self.train_frame_num
-            elif self.split == 'val':
-                return self.val_frame_num
+        if self.if_pixel:
+            return self.ray_rgb.shape[0]
         else:
-            return self.n_images
+            if self.if_sample_frames:
+                if self.split == 'train':
+                    return self.train_frame_num
+                elif self.split == 'val':
+                    return self.val_frame_num
+            else:
+                return self.n_images
 
     def __getitem__(self, idx):
-        _idx = self.frame_idx_list[idx]
-
-        if self.num_views >= 0:
-            image_ids = [25, 22, 28, 40, 44, 48, 0, 8, 13][:self.num_views]
-            _idx = image_ids[random.randint(0, self.num_views - 1)]
         
-        uv = np.mgrid[0:self.img_res[0], 0:self.img_res[1]].astype(np.int32)
-        uv = torch.from_numpy(np.flip(uv, axis=0).copy()).float()
-        uv = uv.reshape(2, -1).transpose(1, 0)
+        if self.if_pixel:
+            # idx becomes ray idx
+            assert not self.num_views >= 0, 'not supported for openrooms/kitchen'
+            assert self.sampling_idx is not None, 'should be -1 for train mode, if you are in pixel mode'
 
-        sample = {
-            "uv": uv,
-            "intrinsics": self.intrinsics_all[_idx],
-            "pose": self.pose_all[_idx], 
-            'image_path': self.image_paths[_idx], 
-        }
-        
-        ground_truth = {
-            "rgb": self.rgb_images[_idx],
-            "depth": self.depth_images[_idx],
-            "mask": self.mask_images[_idx],
-            "normal": self.normal_images[_idx]
-        }
+            sample = {
+                # "uv": self.uv,
+                # "intrinsics": self.intrinsics_all[_idx],
+                # "pose": self.pose_all[_idx], 
+                # 'image_path': self.image_paths[_idx], 
+                'ray_dirs': self.ray_dirs[idx], 
+                'ray_dirs_tmp': self.ray_dirs_tmp[idx], 
+                'ray_cam_loc': self.ray_cam_loc[idx], 
+                'ray_pose': self.ray_pose[idx], 
+            }
+            
+            ground_truth = {
+                "rgb": self.ray_rgb[idx],
+                "depth": self.ray_depth[idx],
+                "mask": self.ray_mask[idx],
+                "normal": self.ray_normal[idx]
+            }
 
-        if self.sampling_idx is not None:
-            ground_truth["rgb"] = self.rgb_images[_idx][self.sampling_idx, :]
-            ground_truth["full_rgb"] = self.rgb_images[_idx]
-            ground_truth["normal"] = self.normal_images[_idx][self.sampling_idx, :]
-            ground_truth["depth"] = self.depth_images[_idx][self.sampling_idx, :]
-            ground_truth["full_depth"] = self.depth_images[_idx]
-            ground_truth["mask"] = self.mask_images[_idx][self.sampling_idx, :]
-            ground_truth["full_mask"] = self.mask_images[_idx]
-         
-            sample["uv"] = uv[self.sampling_idx, :]
+            return int(self.ray_frame_idx[idx]), sample, ground_truth
 
-        return idx, sample, ground_truth
+        else:
+            _idx = self.frame_idx_list[idx]
 
-    def collate_fn(self, batch_list):
+            if self.num_views >= 0:
+                image_ids = [25, 22, 28, 40, 44, 48, 0, 8, 13][:self.num_views]
+                _idx = image_ids[random.randint(0, self.num_views - 1)]
+            
+            sample = {
+                "uv": self.uv,
+                "intrinsics": self.intrinsics_all[_idx],
+                "pose": self.pose_all[_idx], 
+                'image_path': self.image_paths[_idx], 
+            }
+            
+            ground_truth = {
+                "rgb": self.rgb_images[_idx],
+                "depth": self.depth_images[_idx],
+                "mask": self.mask_images[_idx],
+                "normal": self.normal_images[_idx]
+            }
+
+            if self.sampling_idx is not None:
+                ground_truth["rgb"] = self.rgb_images[_idx][self.sampling_idx, :]
+                ground_truth["full_rgb"] = self.rgb_images[_idx]
+                ground_truth["normal"] = self.normal_images[_idx][self.sampling_idx, :]
+                ground_truth["depth"] = self.depth_images[_idx][self.sampling_idx, :]
+                ground_truth["full_depth"] = self.depth_images[_idx]
+                ground_truth["mask"] = self.mask_images[_idx][self.sampling_idx, :]
+                ground_truth["full_mask"] = self.mask_images[_idx]
+            
+                sample["uv"] = self.uv[self.sampling_idx, :]
+
+            return idx, sample, ground_truth
+
+    def collate_fn(self, batch_list, if_pixel=False):
         # get list of dictionaries and returns input, ground_true as dictionary for all batch instances
         batch_list = zip(*batch_list)
 
@@ -425,6 +491,9 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                     if isinstance(entry[0][k], int) or isinstance(entry[0][k], str):
                         ret[k] = [obj[k] for obj in entry]
                     else:
+                        # if if_pixel:
+                            # ret[k] = torch.cat([obj[k] for obj in entry], axis=0) # cat rays
+                        # else:
                         ret[k] = torch.stack([obj[k] for obj in entry])
                     # raise RuntimeError('Invalid data in batch: %s-%s'%str(entry[0]))
                 all_parsed.append(ret)
@@ -434,27 +503,6 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         return tuple(all_parsed)
 
     default_collate = torch.utils.data.dataloader.default_collate
-
-    # def collate_fn(batch):
-    #     """
-    #     Data collater.
-
-    #     Assumes each instance is a dict.    
-    #     Applies different collation rules for each field.
-    #     Args:
-    #         batches: List of loaded elements via Dataset.__getitem__
-    #     """
-    #     collated_batch = {}
-    #     for key in batch[0]:
-    #         # if key in []:
-    #         #     collated_batch[key] = [elem[key] for elem in batch]
-    #         # else:
-    #         try:
-    #             collated_batch[key] = default_collate([elem[key] for elem in batch])
-    #         except:
-    #             print('[!!!!] Type error in collate_fn: ', key)
-
-    #     return collated_batch
 
     def change_sampling_idx(self, sampling_size):
         if sampling_size == -1:

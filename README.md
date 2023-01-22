@@ -92,6 +92,7 @@ python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id tr
 python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --expname _gamma2_L2loss
 [+] python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --expname _gamma2_L2loss_4xreg_lr1e-4_decay25
 [+] python training/exp_runner.py --conf confs/kitchen_hdr_est_grids.conf --scan_id trainval --expname _gamma2
+[+] python training/exp_runner.py --conf confs/kitchen_hdr_est_grids.conf --scan_id trainval --expname _gamma2_randomPixel_L2loss_4xreg_lr5e-4_decay25
 
 python evaluation/eval.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --resolution 512 --eval_rendering --evals_folder ../eval_results/kitchen_train_HDR_EST --checkpoint ../exps/kitchen_HDR_EST_train_mlp_1/2023_01_18_22_10_44/checkpoints/ModelParameters/latest.pth
 ```
@@ -132,6 +133,8 @@ python training/exp_runner.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id 
 python evaluation/eval.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/openrooms_HDR_EST --checkpoint ../exps/public_re_3_v3pose_2048-main_xml-scene0008_00_more_HDR_EST_train_mlp_1/2023_01_18_21_57_14/checkpoints/ModelParameters/latest.pth
 ```
 
+## TODO
+- change training to handle rays instead of batchsize=1
 # Update
 MonoSDF is integrated to [SDFStudio](https://github.com/autonomousvision/sdfstudio), where monocular depth and normal cues can be applied to [UniSurf](https://github.com/autonomousvision/unisurf/tree/main/model) and [NeuS](https://github.com/Totoro97/NeuS/tree/main/models). Please check it out.
 

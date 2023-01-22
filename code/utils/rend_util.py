@@ -65,7 +65,7 @@ def get_camera_params(uv, pose, intrinsics):
     if pose.shape[1] == 7: #In case of quaternion vector representation
         cam_loc = pose[:, 4:]
         R = quat_to_rot(pose[:,:4])
-        p = torch.eye(4).repeat(pose.shape[0],1,1).cuda().float()
+        p = torch.eye(4).repeat(pose.shape[0],1,1).float()
         p[:, :3, :3] = R
         p[:, :3, 3] = cam_loc
     else: # In case of pose matrix representation
@@ -73,11 +73,12 @@ def get_camera_params(uv, pose, intrinsics):
         p = pose
 
     batch_size, num_samples, _ = uv.shape
+    device = intrinsics.device
 
-    depth = torch.ones((batch_size, num_samples)).cuda()
-    x_cam = uv[:, :, 0].view(batch_size, -1)
-    y_cam = uv[:, :, 1].view(batch_size, -1)
-    z_cam = depth.view(batch_size, -1)
+    depth = torch.ones((batch_size, num_samples))
+    x_cam = uv[:, :, 0].view(batch_size, -1).to(device)
+    y_cam = uv[:, :, 1].view(batch_size, -1).to(device)
+    z_cam = depth.view(batch_size, -1).to(device)
 
     pixel_points_cam = lift(x_cam, y_cam, z_cam, intrinsics=intrinsics)
 
@@ -104,7 +105,7 @@ def get_camera_for_plot(pose):
 
 def lift(x, y, z, intrinsics):
     # parse intrinsics
-    intrinsics = intrinsics.cuda()
+    # intrinsics = intrinsics.cuda()
     fx = intrinsics[:, 0, 0]
     fy = intrinsics[:, 1, 1]
     cx = intrinsics[:, 0, 2]
@@ -115,7 +116,7 @@ def lift(x, y, z, intrinsics):
     y_lift = (y - cy.unsqueeze(-1)) / fy.unsqueeze(-1) * z
 
     # homogeneous
-    return torch.stack((x_lift, y_lift, z, torch.ones_like(z).cuda()), dim=-1)
+    return torch.stack((x_lift, y_lift, z, torch.ones_like(z)), dim=-1)
 
 
 def quat_to_rot(q):
