@@ -12,7 +12,7 @@ import cv2
 import random
 from pathlib import Path
 
-class SceneDataset(torch.utils.data.Dataset):
+class SceneDataset_(torch.utils.data.Dataset):
 
     def __init__(self,
                  data_dir,
@@ -23,7 +23,7 @@ class SceneDataset(torch.utils.data.Dataset):
 
         self.instance_dir = os.path.join('../data', data_dir, '{0}'.format(scan_id))
 
-        self.total_pixels = img_res[0] * img_res[1]
+        self.total_pixels_im = img_res[0] * img_res[1]
         self.img_res = img_res
 
         assert os.path.exists(self.instance_dir), "Data directory is empty"
@@ -32,6 +32,7 @@ class SceneDataset(torch.utils.data.Dataset):
         assert num_views in [-1, 3, 6, 9]
         
         self.sampling_idx = None
+        # self.sampling_ratio = 1.
 
         image_dir = '{0}/image'.format(self.instance_dir)
         self.image_paths = sorted(utils.glob_imgs(image_dir))
@@ -122,7 +123,7 @@ class SceneDataset(torch.utils.data.Dataset):
         if sampling_size == -1:
             self.sampling_idx = None
         else:
-            self.sampling_idx = torch.randperm(self.total_pixels)[:sampling_size]
+            self.sampling_idx = torch.randperm(self.total_pixels_im)[:sampling_size]
 
     def get_scale_mat(self):
         return np.load(self.cam_file)['scale_mat_0']
@@ -149,7 +150,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         self.instance_dir = os.path.join('../data', data_dir, '{0}'.format(scan_id))
 
-        self.total_pixels = img_res[0] * img_res[1]
+        self.total_pixels_im = img_res[0] * img_res[1]
         self.img_res = img_res
         self.num_views = num_views
         assert num_views in [-1, 3, 6, 9]
@@ -355,6 +356,9 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         self.ray_frame_idx = np.repeat(np.arange(_N, dtype=np.int32).reshape(-1, 1), _HW, 1).flatten()
         self.ray_pose = pose_all_tensor.unsqueeze(1).expand(-1, _HW, -1, -1)[self.frame_idx_list].view(-1, 4, 4) # (N, HW, 4, 4) -> (N'HW, 4, 4)
 
+        self.total_pixels = self.ray_rgb.shape[0]
+        self.sampling_idx = list(range(self.total_pixels))
+
     def sample_frames(self):
         '''
         frame_idx in [0, ..., total_frame_num-1]
@@ -407,7 +411,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         # else:
         #     return 1
         if self.if_pixel:
-            return self.ray_rgb.shape[0]
+            return len(self.sampling_idx)
         else:
             if self.if_sample_frames:
                 if self.split == 'train':
@@ -422,27 +426,28 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         if self.if_pixel:
             # idx becomes ray idx
             assert not self.num_views >= 0, 'not supported for openrooms/kitchen'
-            assert self.sampling_idx is not None, 'should be -1 for train mode, if you are in pixel mode'
+            # assert self.sampling_idx is not None, 'should be -1 for train mode, if you are in pixel mode'
+            _idx = self.sampling_idx[idx]
 
             sample = {
                 # "uv": self.uv,
                 # "intrinsics": self.intrinsics_all[_idx],
                 # "pose": self.pose_all[_idx], 
                 # 'image_path': self.image_paths[_idx], 
-                'ray_dirs': self.ray_dirs[idx], 
-                'ray_dirs_tmp': self.ray_dirs_tmp[idx], 
-                'ray_cam_loc': self.ray_cam_loc[idx], 
-                'ray_pose': self.ray_pose[idx], 
+                'ray_dirs': self.ray_dirs[_idx], 
+                'ray_dirs_tmp': self.ray_dirs_tmp[_idx], 
+                'ray_cam_loc': self.ray_cam_loc[_idx], 
+                'ray_pose': self.ray_pose[_idx], 
             }
             
             ground_truth = {
-                "rgb": self.ray_rgb[idx],
-                "depth": self.ray_depth[idx],
-                "mask": self.ray_mask[idx],
-                "normal": self.ray_normal[idx]
+                "rgb": self.ray_rgb[_idx],
+                "depth": self.ray_depth[_idx],
+                "mask": self.ray_mask[_idx],
+                "normal": self.ray_normal[_idx]
             }
 
-            return int(self.ray_frame_idx[idx]), sample, ground_truth
+            return int(self.ray_frame_idx[_idx]), sample, ground_truth
 
         else:
             _idx = self.frame_idx_list[idx]
@@ -507,8 +512,14 @@ class SceneDatasetDN(torch.utils.data.Dataset):
     def change_sampling_idx(self, sampling_size):
         if sampling_size == -1:
             self.sampling_idx = None
+            # self.sampling_ratio = 1.
         else:
-            self.sampling_idx = torch.randperm(self.total_pixels)[:sampling_size]
+            if self.if_pixel:
+                total_sampling_size = int(float(sampling_size) / float(self.total_pixels_im) * self.total_pixels)
+                self.sampling_idx = torch.randperm(self.total_pixels)[:total_sampling_size]
+            else:
+                self.sampling_idx = torch.randperm(self.total_pixels_im)[:sampling_size]
+            # self.sampling_ratio = float(sampling_size) / float(self.total_pixels_im)
 
     def get_scale_mat(self):
         return np.load(self.cam_file)['scale_mat_0']

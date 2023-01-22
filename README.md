@@ -92,7 +92,8 @@ python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id tr
 python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --expname _gamma2_L2loss
 [+] python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --expname _gamma2_L2loss_4xreg_lr1e-4_decay25
 [+] python training/exp_runner.py --conf confs/kitchen_hdr_est_grids.conf --scan_id trainval --expname _gamma2
-[+] python training/exp_runner.py --conf confs/kitchen_hdr_est_grids.conf --scan_id trainval --expname _gamma2_randomPixel_L2loss_4xreg_lr5e-4_decay25
+[++] python training/exp_runner.py --conf confs/kitchen_hdr_est_grids.conf --scan_id trainval --expname _gamma2_randomPixel_L2loss_4xreg_lr5e-4_decay25
+[++] python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --expname _gamma2_randomPixel_L2loss_4xreg_lr5e-4_decay25
 
 python evaluation/eval.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --resolution 512 --eval_rendering --evals_folder ../eval_results/kitchen_train_HDR_EST --checkpoint ../exps/kitchen_HDR_EST_train_mlp_1/2023_01_18_22_10_44/checkpoints/ModelParameters/latest.pth
 ```

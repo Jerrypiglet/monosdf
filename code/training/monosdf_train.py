@@ -20,9 +20,12 @@ from utils.plots import gamma2_th, get_surface_sliding
 import torch.distributed as dist
 
 class MonoSDFTrainRunner():
-    def __init__(self,**kwargs):
+    def __init__(self, **kwargs):
         torch.set_default_dtype(torch.float32)
         torch.set_num_threads(1)
+
+        self.opt = kwargs['opt']
+        self.if_cluster = self.opt.if_cluster
 
         self.conf = ConfigFactory.parse_file(kwargs['conf'])
         self.batch_size = kwargs['batch_size']
@@ -31,7 +34,10 @@ class MonoSDFTrainRunner():
         self.GPU_INDEX = kwargs['gpu_index']
         self.if_distributed = kwargs['if_distributed']
 
-        self.expname = self.conf.get_string('train.expname') + kwargs['expname']
+        self.expname = self.opt.expname_pre + self.conf.get_string('train.expname') + kwargs['expname']
+        if self.opt.resume != '':
+            self.expname = self.opt.resume
+
         scan_id = kwargs['scan_id'] if kwargs['scan_id'] != '' else self.conf.get_string('dataset.scan_id', default='')
         if scan_id != '':
             self.expname = self.expname + '_{0}'.format(scan_id)
@@ -53,8 +59,11 @@ class MonoSDFTrainRunner():
             is_continue = kwargs['is_continue']
 
         if self.GPU_INDEX == 0:
-            utils.mkdir_ifnotexists(os.path.join('../',self.exps_folder_name))
-            self.expdir = os.path.join('../', self.exps_folder_name, self.expname)
+            if self.if_cluster:
+                self.expdir = os.path.join(self.exps_folder_name, self.expname)
+            else:
+                utils.mkdir_ifnotexists(os.path.join('../',self.exps_folder_name))
+                self.expdir = os.path.join('../', self.exps_folder_name, self.expname)
             utils.mkdir_ifnotexists(self.expdir)
             if is_continue:
                 self.timestamp = timestamp
@@ -88,6 +97,8 @@ class MonoSDFTrainRunner():
         dataset_conf = self.conf.get_config('dataset')
         if kwargs['scan_id'] != '':
             dataset_conf['scan_id'] = kwargs['scan_id']
+        if self.if_cluster:
+            dataset_conf['data_dir'] = '/ruidata/monosdf/data/' + dataset_conf['data_dir']
 
         self.train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', **dataset_conf)
         if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
@@ -186,7 +197,7 @@ class MonoSDFTrainRunner():
             self.scheduler.load_state_dict(data["scheduler_state_dict"])
 
         self.num_pixels = self.conf.get_int('train.num_pixels')
-        self.total_pixels = self.train_dataset.total_pixels
+        self.total_pixels_im = self.train_dataset.total_pixels_im
         self.img_res = self.train_dataset.img_res
         self.n_batches = len(self.train_dataloader)
         self.plot_freq = self.conf.get_int('train.plot_freq')
@@ -248,20 +259,20 @@ class MonoSDFTrainRunner():
                 print('== Evaluating epoch %d plot_dataloader (%d batches)...'%(epoch, len(self.plot_dataloader)))
 
                 # exporting mesh from SDF
-                # mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
-                # print('- Exporting mesh to %s...'%mesh_path)
-                # with torch.no_grad():
-                #     mesh = get_surface_sliding(path=self.plots_dir, 
-                #                 epoch=epoch, 
-                #                 sdf=lambda x: implicit_network(x)[:, 0], 
-                #                 resolution=self.plot_conf.get('resolution'), 
-                #                 grid_boundary=self.plot_conf.get('grid_boundary'), 
-                #                 level=0,  
-                #                 return_mesh=True,  
-                #                 )
-                # print('-> Exported.')
-                # # utils.mkdir_ifnotexists(self.plots_dir)
-                # mesh.export(mesh_path, 'ply')
+                mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
+                print('- Exporting mesh to %s...'%mesh_path)
+                with torch.no_grad():
+                    mesh = get_surface_sliding(path=self.plots_dir, 
+                                epoch=epoch, 
+                                sdf=lambda x: implicit_network(x)[:, 0], 
+                                resolution=self.plot_conf.get('resolution'), 
+                                grid_boundary=self.plot_conf.get('grid_boundary'), 
+                                level=0,  
+                                return_mesh=True,  
+                                )
+                print('-> Exported.')
+                # utils.mkdir_ifnotexists(self.plots_dir)
+                mesh.export(mesh_path, 'ply')
 
                 # indices, model_input, ground_truth = next(iter(self.plot_dataloader))
                 for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(self.plot_dataloader)):
@@ -270,7 +281,7 @@ class MonoSDFTrainRunner():
                     model_input["uv"] = model_input["uv"].cuda()
                     model_input['pose'] = model_input['pose'].cuda()
                     
-                    split = utils.split_input(model_input, self.total_pixels, n_pixels=self.split_n_pixels)
+                    split = utils.split_input(model_input, self.total_pixels_im, n_pixels=self.split_n_pixels)
                     res = []
                     for s in tqdm(split):
                         out = self.model(s, indices)
@@ -283,7 +294,7 @@ class MonoSDFTrainRunner():
 
                     # print('-- Plotting...')
                     batch_size = ground_truth['rgb'].shape[0]
-                    model_outputs = utils.merge_output(res, self.total_pixels, batch_size)
+                    model_outputs = utils.merge_output(res, self.total_pixels_im, batch_size)
                     plot_data = self.get_plot_data(model_input, model_outputs, model_input['pose'], ground_truth['rgb'], ground_truth['normal'], ground_truth['depth'])
                     # print('-- plt.plot...')
 
@@ -307,7 +318,7 @@ class MonoSDFTrainRunner():
             self.train_dataset.change_sampling_idx(self.num_pixels)
             if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
 
-            print('== Training epoch %d (up to %d) with train_dataloader...'%(epoch, self.nepochs))
+            print('== Training epoch %d (up to %d) with train_dataloader (%d samples after random sampling; %d training batches)...'%(epoch, self.nepochs, len(self.train_dataset.sampling_idx), len(self.train_dataloader)))
 
             for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(self.train_dataloader)):
                 '''

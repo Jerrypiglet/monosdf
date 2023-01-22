@@ -17,6 +17,8 @@ if __name__ == '__main__':
     parser.add_argument('--nepoch', type=int, default=5000, help='number of epochs to train for')
     parser.add_argument('--conf', type=str, default='./confs/dtu.conf')
     parser.add_argument('--expname', type=str, default='')
+    parser.add_argument('--expname_pre', type=str, default='')
+    parser.add_argument('--resume', type=str, default='')
     parser.add_argument("--exps_folder", type=str, default="exps")
     #parser.add_argument('--gpu', type=str, default='auto', help='GPU to use [default: GPU auto]')
     parser.add_argument('--is_continue', default=False, action="store_true",
@@ -30,6 +32,7 @@ if __name__ == '__main__':
                         help='If set, cancel visualization in intermediate epochs.')
     parser.add_argument("--local_rank", type=int, required=False, help='local rank for DistributedDataParallel', default=0)
     parser.add_argument('--is_distributed', default=False, action="store_true", help='')
+    parser.add_argument('--if_cluster', default=False, action="store_true", help='')
 
     opt = parser.parse_args()
 
@@ -60,7 +63,7 @@ if __name__ == '__main__':
         torch.distributed.barrier()
 
 
-    trainrunner = MonoSDFTrainRunner(conf=opt.conf,
+    trainrunner = MonoSDFTrainRunner(opt=opt, conf=opt.conf,
                                     batch_size=opt.batch_size,
                                     nepochs=opt.nepoch,
                                     expname=opt.expname,
