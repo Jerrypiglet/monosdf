@@ -1,0 +1,70 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: zz-torch-job-gpu
+  # namespace: ucsd-haosulab
+  namespace: "#NAMESPACE"
+  labels:
+    user: rui  # Specify your name
+spec:
+  ttlSecondsAfterFinished: 86400  # Wait one day to delete completed jobs
+  template:
+    spec:
+      # nodeSelector:
+      #   kubernetes.io/hostname: k8s-haosu-04.sdsc.optiputer.net
+      containers:
+      - name: gpu-container-rui
+        # image: docker.io/jerrypiglet/rui_conda_inverse:public
+        image: gitlab-registry.nrp-nautilus.io/jerrypiglet/monosdf
+        imagePullPolicy: IfNotPresent
+        command:
+        - "sh"
+        - "-c"
+        args:
+        - "which python && "
+        resources:
+          requests:
+            cpu: "#CPUR" # "20"
+            memory: "#MEMRGi"  #"50Gi"
+            nvidia.com/gpu: '#GPUS'
+          limits:
+            cpu: "#CPUL" #"30"
+            memory: "#MEMLGi" #"100Gi"
+            nvidia.com/gpu: '#GPUS'
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm 
+          - name: ruidatamclab
+            mountPath: /ruidata
+          # - name: openroomsindepthaosu
+          #   mountPath: /openroomsindept
+          # - name: siggraphasia20dataset
+          #   mountPath: /siggraphasia20dataset
+      volumes:
+      - name: dshm  # shared memory
+        emptyDir:
+          medium: Memory
+      # - name: openroomsindepthaosu
+      #   persistentVolumeClaim:
+      #       claimName: openroomsindepthaosu 
+      - name: ruidatamclab
+        persistentVolumeClaim:
+            claimName: ruidatamclab
+      # - name: siggraphasia20dataset
+      #   persistentVolumeClaim:
+      #       claimName: siggraphasia20dataset
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: nautilus.io/group
+                    operator: In
+                    values:
+                      - haosu
+                  - key: nvidia.com/gpu.product
+                    operator: In
+                    values:
+                      - NVIDIA-GeForce-RTX-2080-Ti
+  backoffLimit: 2

@@ -18,7 +18,6 @@ def get_psnr(img1, img2, normalize_rgb=False):
     if normalize_rgb: # [-1,1] --> [0,1]
         img1 = (img1 + 1.) / 2.
         img2 = (img2 + 1. ) / 2.
-
     mse = torch.mean((img1 - img2) ** 2)
     psnr = -10. * torch.log(mse) / torch.log(torch.Tensor([10.]).cuda())
 

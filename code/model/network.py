@@ -356,6 +356,7 @@ class RenderingNetwork(nn.Module):
 
         self.num_layers = len(dims)
         self.if_hdr = if_hdr
+        assert self.if_hdr, 'for now'
 
         for l in range(0, self.num_layers - 1):
             out_dim = dims[l + 1]
@@ -414,12 +415,19 @@ class RenderingNetwork(nn.Module):
 
 
 class MonoSDFNetwork(nn.Module):
-    def __init__(self, conf):
+
+    def __init__(
+        self, 
+        conf, 
+        if_hdr=False, 
+        ):
+
         super().__init__()
         self.feature_vector_size = conf.get_int('feature_vector_size')
         self.scene_bounding_sphere = conf.get_float('scene_bounding_sphere', default=1.0)
         self.white_bkgd = conf.get_bool('white_bkgd', default=False)
         self.bg_color = torch.tensor(conf.get_list("bg_color", default=[1.0, 1.0, 1.0])).float().cuda()
+        self.if_hdr = if_hdr
 
         Grid_MLP = conf.get_bool('Grid_MLP', default=False)
         self.Grid_MLP = Grid_MLP
@@ -428,7 +436,7 @@ class MonoSDFNetwork(nn.Module):
         else:
             self.implicit_network = ImplicitNetwork(self.feature_vector_size, 0.0 if self.white_bkgd else self.scene_bounding_sphere, **conf.get_config('implicit_network'))
         
-        self.rendering_network = RenderingNetwork(self.feature_vector_size, **conf.get_config('rendering_network'))
+        self.rendering_network = RenderingNetwork(self.feature_vector_size, **conf.get_config('rendering_network'), if_hdr=self.if_hdr)
         
         self.density = LaplaceDensity(**conf.get_config('density'))
         sampling_method = conf.get_string('sampling_method', default="errorbounded")

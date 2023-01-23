@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tb-rui  # replace with ${USER_NAME}-tb
+  labels:
+    k8s-app: tensorboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: tensorboard
+  template:
+    metadata:
+      labels:
+        k8s-app: tensorboard
+    spec:
+      containers:
+        - name: tensorboard
+          command: ["/bin/sh", "-c"]
+          args: ["tensorboard --logdir /ruidata/monosdf/exps --port 6012"] # specify the directory to watch
+          image: tensorflow/tensorflow
+          # ports:
+          # - containerPort: 6006
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "1"
+              memory: "4Gi"
+          volumeMounts:
+            # - name: cephfs
+              # mountPath: /cephfs
+          - name: ruidatamclab
+            mountPath: /ruidata
+      volumes:
+        - name: ruidatamclab
+          persistentVolumeClaim:
+              claimName: ruidatamclab
+        # - name: cephfs
+        #   persistentVolumeClaim:
+        #     claimName: haosulab-cephfs

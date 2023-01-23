@@ -103,7 +103,8 @@ class MonoSDFTrainRunner():
             dataset_conf['data_dir'] = '/ruidata/monosdf/data/' + dataset_conf['data_dir']
 
         self.train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', **dataset_conf)
-        if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
+        self.if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
+        self.if_hdr = self.conf.get_config('dataset').get('if_hdr', False)
 
         val_frame_num = dataset_conf.get('val_frame_num', -1)
         val_frame_idx_input = dataset_conf.get('val_frame_idx_input', [])
@@ -117,20 +118,20 @@ class MonoSDFTrainRunner():
 
         assert self.val_dataset.if_pixel == False
 
-        self.max_total_iters = self.conf.get_int('train.max_total_iters', default=2000000)
-        self.ds_len = len(self.train_dataset) if not if_pixel_train else self.train_dataset.n_images
+        self.max_total_iters = self.conf.get_int('train.max_total_iters', default=1000000)
+        self.ds_len = len(self.train_dataset) if not self.if_pixel_train else self.train_dataset.n_images
         print('Finish loading data. Dataset size: {0}'.format(self.ds_len))
         if ('scan' in scan_id and (int(scan_id[4:]) < 24 and int(scan_id[4:]) > 0)) or (not 'scan' in scan_id): # BlendedMVS, running for 200k iterations
-            # if not if_pixel_train:
+            # if not self.if_pixel_train:
             self.nepochs = int(self.max_total_iters / self.ds_len)
         print('RUNNING FOR {0}'.format(self.nepochs))
         assert self.nepochs > 0
 
         self.train_dataloader = torch.utils.data.DataLoader(self.train_dataset,
-                                                            batch_size=self.batch_size if not if_pixel_train else self.conf.get_int('train.num_pixels'),
+                                                            batch_size=self.batch_size if not self.if_pixel_train else self.conf.get_int('train.num_pixels'),
                                                             shuffle=True,
                                                             collate_fn=self.train_dataset.collate_fn,
-                                                            num_workers=8)
+                                                            num_workers=1 if self.if_cluster else 8)
         self.plot_dataloader = torch.utils.data.DataLoader(self.val_dataset,
                                                            batch_size=self.conf.get_int('plot.plot_nimgs'),
                                                            shuffle=shuffle_val,
@@ -138,8 +139,7 @@ class MonoSDFTrainRunner():
                                                            )
 
         conf_model = self.conf.get_config('model')
-        self.model = utils.get_class(self.conf.get_string('train.model_class'))(conf=conf_model)
-
+        self.model = utils.get_class(self.conf.get_string('train.model_class'))(conf=conf_model, if_hdr=self.if_hdr)
         self.Grid_MLP = self.model.Grid_MLP
         if torch.cuda.is_available():
             self.model.cuda()
@@ -164,7 +164,7 @@ class MonoSDFTrainRunner():
         
         # Exponential learning rate scheduler
         decay_rate = self.conf.get_float('train.sched_decay_rate', default=0.1)
-        decay_steps = self.nepochs * len(self.train_dataset)
+        decay_steps = self.nepochs * self.ds_len
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, decay_rate ** (1./decay_steps))
 
         if self.if_distributed:
@@ -236,11 +236,6 @@ class MonoSDFTrainRunner():
             self.writer = SummaryWriter(log_dir=os.path.join(self.plots_dir, 'logs'))
             print('writing logs to ->', os.path.join(self.plots_dir, 'logs'))
 
-        # if 'if_hdr' in self.conf.get_config('dataset'):
-        if_hdr = self.conf.get_config('dataset').get('if_hdr', False)
-        # else:
-        #     if_hdr = False
-
         # self.iter_step = 0
         for epoch in range(self.start_epoch, self.nepochs + 1):
 
@@ -306,7 +301,7 @@ class MonoSDFTrainRunner():
                             self.plots_dir,
                             epoch,
                             self.img_res,
-                            if_hdr=if_hdr, 
+                            if_hdr=self.if_hdr, 
                             if_tensorboard=True, writer=self.writer, tid=self.iter_step, batch_id=data_index, 
                             **self.plot_conf
                             )
@@ -318,7 +313,6 @@ class MonoSDFTrainRunner():
             '''
 
             self.train_dataset.change_sampling_idx(self.num_pixels)
-            if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
 
             print('== Training epoch %d (up to %d) with train_dataloader (%d samples after random sampling; %d training batches)...'%(epoch, self.nepochs, len(self.train_dataset.sampling_idx), len(self.train_dataloader)))
 
@@ -326,6 +320,13 @@ class MonoSDFTrainRunner():
                 '''
                 indices: image idxes
                 '''
+                # self.iter_step += 1           
+                # self.writer.add_scalar('Statistics/lr0', self.optimizer.param_groups[0]['lr'], self.iter_step)
+                # self.writer.add_scalar('Statistics/lr1', self.optimizer.param_groups[1]['lr'], self.iter_step)
+                # self.writer.add_scalar('Statistics/lr2', self.optimizer.param_groups[2]['lr'], self.iter_step)
+                # self.scheduler.step()
+                # continue
+
                 model_input = {k: v.cuda() if type(v)==torch.Tensor else v for k, v in model_input.items()}
                 # model_input["intrinsics"] = model_input["intrinsics"].cuda()
                 # model_input["uv"] = model_input["uv"].cuda()
@@ -333,14 +334,14 @@ class MonoSDFTrainRunner():
                 
                 self.optimizer.zero_grad()
                 
-                model_outputs = self.model(model_input, indices, if_pixel_input=if_pixel_train)
+                model_outputs = self.model(model_input, indices, if_pixel_input=self.if_pixel_train)
                 
-                loss_output = self.loss(model_outputs, ground_truth, if_pixel_input=if_pixel_train)
+                loss_output = self.loss(model_outputs, ground_truth, if_pixel_input=self.if_pixel_train)
                 loss = loss_output['loss']
                 loss.backward()
                 self.optimizer.step()
                 
-                if if_hdr:
+                if self.if_hdr:
                     psnr = rend_util.get_psnr(gamma2_th(model_outputs['rgb_values']),
                                             gamma2_th(ground_truth['rgb'].cuda().reshape(-1,3))
                                             )
