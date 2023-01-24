@@ -136,6 +136,7 @@ python evaluation/eval.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan
 
 ## TODO
 - [] change training to handle rays instead of batchsize=1: change to random batch of rays
+- [] add datetime to taskname from rui_tool; instead of add when launching
 # Update
 MonoSDF is integrated to [SDFStudio](https://github.com/autonomousvision/sdfstudio), where monocular depth and normal cues can be applied to [UniSurf](https://github.com/autonomousvision/unisurf/tree/main/model) and [NeuS](https://github.com/Totoro97/NeuS/tree/main/models). Please check it out.
 

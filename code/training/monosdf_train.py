@@ -7,6 +7,7 @@ import torch
 from tqdm import tqdm
 import numpy as np
 import math
+import time
 
 import utils.general as utils
 import utils.plots as plt
@@ -129,9 +130,9 @@ class MonoSDFTrainRunner():
 
         self.train_dataloader = torch.utils.data.DataLoader(self.train_dataset,
                                                             batch_size=self.batch_size if not self.if_pixel_train else self.conf.get_int('train.num_pixels'),
-                                                            shuffle=True,
+                                                            shuffle=True if not self.if_pixel_train else False,
                                                             collate_fn=self.train_dataset.collate_fn,
-                                                            num_workers=1 if self.if_cluster else 8)
+                                                            num_workers=16 if self.if_cluster else 8)
         self.plot_dataloader = torch.utils.data.DataLoader(self.val_dataset,
                                                            batch_size=self.conf.get_int('plot.plot_nimgs'),
                                                            shuffle=shuffle_val,
@@ -315,17 +316,21 @@ class MonoSDFTrainRunner():
             self.train_dataset.change_sampling_idx(self.num_pixels)
 
             print('== Training epoch %d (up to %d) with train_dataloader (%d samples after random sampling; %d training batches)...'%(epoch, self.nepochs, len(self.train_dataset.sampling_idx), len(self.train_dataloader)))
+            n_batches = len(self.train_dataloader)
 
+            tic = time.time()
             for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(self.train_dataloader)):
                 '''
                 indices: image idxes
                 '''
-                # self.iter_step += 1           
-                # self.writer.add_scalar('Statistics/lr0', self.optimizer.param_groups[0]['lr'], self.iter_step)
-                # self.writer.add_scalar('Statistics/lr1', self.optimizer.param_groups[1]['lr'], self.iter_step)
-                # self.writer.add_scalar('Statistics/lr2', self.optimizer.param_groups[2]['lr'], self.iter_step)
-                # self.scheduler.step()
-                # continue
+                self.iter_step += 1           
+                self.writer.add_scalar('Statistics/lr0', self.optimizer.param_groups[0]['lr'], self.iter_step)
+                self.writer.add_scalar('Statistics/lr1', self.optimizer.param_groups[1]['lr'], self.iter_step)
+                self.writer.add_scalar('Statistics/lr2', self.optimizer.param_groups[2]['lr'], self.iter_step)
+                self.scheduler.step()
+                print(self.iter_step, time.time() - tic)
+                tic = time.time()
+                continue
 
                 model_input = {k: v.cuda() if type(v)==torch.Tensor else v for k, v in model_input.items()}
                 # model_input["intrinsics"] = model_input["intrinsics"].cuda()
@@ -356,7 +361,7 @@ class MonoSDFTrainRunner():
                     print(
                         '{0}_{1} [{2}] ({3}/{4}): loss = {5}, rgb_loss = {6}, eikonal_loss = {7}, psnr = {8}, bete={9}, alpha={10}; [{11}]'
                             .format(self.expname, 
-                                    self.timestamp, epoch, data_index, self.n_batches, loss.item(),
+                                    self.timestamp, epoch, data_index, n_batches, loss.item(),
                                     loss_output['rgb_loss'].item(),
                                     loss_output['eikonal_loss'].item(),
                                     psnr.item(),
@@ -382,8 +387,10 @@ class MonoSDFTrainRunner():
                         self.writer.add_scalar('Statistics/lr0', self.optimizer.param_groups[0]['lr'], self.iter_step)
                         self.writer.add_scalar('Statistics/lr1', self.optimizer.param_groups[1]['lr'], self.iter_step)
                         self.writer.add_scalar('Statistics/lr2', self.optimizer.param_groups[2]['lr'], self.iter_step)
-                
-                # self.train_dataset.change_sampling_idx(self.num_pixels)
+    
+                if not self.if_pixel_train:
+                    self.train_dataset.change_sampling_idx(self.num_pixels)
+    
                 self.scheduler.step()
 
             print('== Training epoch %d with train_dataloader... DONE'%epoch)

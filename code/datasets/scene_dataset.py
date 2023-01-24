@@ -2,7 +2,7 @@ import os
 import torch
 import torch.nn.functional as F
 import numpy as np
-
+import time
 import utils.general as utils
 from utils import rend_util
 from glob import glob
@@ -425,6 +425,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         
         if self.if_pixel:
             # idx becomes ray idx
+            # tic = time.time()
             assert not self.num_views >= 0, 'not supported for openrooms/kitchen'
             # assert self.sampling_idx is not None, 'should be -1 for train mode, if you are in pixel mode'
             _idx = self.sampling_idx[idx]
@@ -446,7 +447,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 "mask": self.ray_mask[_idx],
                 "normal": self.ray_normal[_idx]
             }
-
+            # print(int(self.ray_frame_idx[_idx]), time.time() - tic)
             return int(self.ray_frame_idx[_idx]), sample, ground_truth
 
         else:
@@ -485,10 +486,12 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
     def collate_fn(self, batch_list, if_pixel=False):
         # get list of dictionaries and returns input, ground_true as dictionary for all batch instances
+        print('-->>'); tic = time.time()
         batch_list = zip(*batch_list)
 
         all_parsed = []
-        for entry in batch_list:
+        for _, entry in enumerate(batch_list):
+            print(_, type(entry[0]))
             if type(entry[0]) is dict:
                 # make them all into a new dict
                 ret = {}
@@ -504,6 +507,8 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 all_parsed.append(ret)
             else:
                 all_parsed.append(torch.LongTensor(entry))
+
+        print('-->.', all_parsed[0], time.time() - tic)
 
         return tuple(all_parsed)
 
