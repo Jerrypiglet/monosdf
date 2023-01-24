@@ -27,6 +27,7 @@ class MonoSDFTrainRunner():
 
         self.opt = kwargs['opt']
         self.if_cluster = self.opt.if_cluster
+        self.log_every_iter = 100 if self.if_cluster else 10
 
         self.conf = ConfigFactory.parse_file(kwargs['conf'])
         self.batch_size = kwargs['batch_size']
@@ -318,19 +319,23 @@ class MonoSDFTrainRunner():
             print('== Training epoch %d (up to %d) with train_dataloader (%d samples after random sampling; %d training batches)...'%(epoch, self.nepochs, len(self.train_dataset.sampling_idx), len(self.train_dataloader)))
             n_batches = len(self.train_dataloader)
 
-            tic = time.time()
+            # tic = time.time()
             for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(self.train_dataloader)):
                 '''
                 indices: image idxes
                 '''
-                self.iter_step += 1           
-                self.writer.add_scalar('Statistics/lr0', self.optimizer.param_groups[0]['lr'], self.iter_step)
-                self.writer.add_scalar('Statistics/lr1', self.optimizer.param_groups[1]['lr'], self.iter_step)
-                self.writer.add_scalar('Statistics/lr2', self.optimizer.param_groups[2]['lr'], self.iter_step)
-                self.scheduler.step()
-                print(self.iter_step, time.time() - tic)
-                tic = time.time()
-                continue
+
+                '''
+                debug: test dataloading and summary writing ([!!!] which might be slow on the cluster)
+                '''
+                # self.iter_step += 1           
+                # self.writer.add_scalar('Statistics/lr0', self.optimizer.param_groups[0]['lr'], self.iter_step)
+                # self.writer.add_scalar('Statistics/lr1', self.optimizer.param_groups[1]['lr'], self.iter_step)
+                # self.writer.add_scalar('Statistics/lr2', self.optimizer.param_groups[2]['lr'], self.iter_step)
+                # self.scheduler.step()
+                # print(self.iter_step, time.time() - tic)
+                # tic = time.time()
+                # continue
 
                 model_input = {k: v.cuda() if type(v)==torch.Tensor else v for k, v in model_input.items()}
                 # model_input["intrinsics"] = model_input["intrinsics"].cuda()
@@ -369,24 +374,24 @@ class MonoSDFTrainRunner():
                                     1. / self.model.module.density.get_beta().item() if self.if_distributed else 1. / self.model.density.get_beta().item(), 
                                     CUDA_VISIBLE_DEVICES, 
                                     ))
-                    
-                    self.writer.add_scalar('Loss/loss', loss.item(), self.iter_step)
-                    self.writer.add_scalar('Loss/color_loss', loss_output['rgb_loss'].item(), self.iter_step)
-                    self.writer.add_scalar('Loss/eikonal_loss', loss_output['eikonal_loss'].item(), self.iter_step)
-                    self.writer.add_scalar('Loss/smooth_loss', loss_output['smooth_loss'].item(), self.iter_step)
-                    self.writer.add_scalar('Loss/depth_loss', loss_output['depth_loss'].item(), self.iter_step)
-                    self.writer.add_scalar('Loss/normal_l1_loss', loss_output['normal_l1'].item(), self.iter_step)
-                    self.writer.add_scalar('Loss/normal_cos_loss', loss_output['normal_cos'].item(), self.iter_step)
-                    
-                    self.writer.add_scalar('Statistics/beta', self.model.module.density.get_beta().item() if self.if_distributed else self.model.density.get_beta().item(), self.iter_step)
-                    self.writer.add_scalar('Statistics/alpha', 1. / self.model.module.density.get_beta().item() if self.if_distributed else 1. / self.model.density.get_beta().item(), self.iter_step)
-                    self.writer.add_scalar('Statistics/psnr', psnr.item(), self.iter_step)
-                    self.writer.add_scalar('Statistics/epoch', epoch, self.iter_step)
-                    
-                    if self.Grid_MLP:
-                        self.writer.add_scalar('Statistics/lr0', self.optimizer.param_groups[0]['lr'], self.iter_step)
-                        self.writer.add_scalar('Statistics/lr1', self.optimizer.param_groups[1]['lr'], self.iter_step)
-                        self.writer.add_scalar('Statistics/lr2', self.optimizer.param_groups[2]['lr'], self.iter_step)
+                    if self.iter_step % self.log_every_iter == 0:
+                        self.writer.add_scalar('Loss/loss', loss.item(), self.iter_step)
+                        self.writer.add_scalar('Loss/color_loss', loss_output['rgb_loss'].item(), self.iter_step)
+                        self.writer.add_scalar('Loss/eikonal_loss', loss_output['eikonal_loss'].item(), self.iter_step)
+                        self.writer.add_scalar('Loss/smooth_loss', loss_output['smooth_loss'].item(), self.iter_step)
+                        self.writer.add_scalar('Loss/depth_loss', loss_output['depth_loss'].item(), self.iter_step)
+                        self.writer.add_scalar('Loss/normal_l1_loss', loss_output['normal_l1'].item(), self.iter_step)
+                        self.writer.add_scalar('Loss/normal_cos_loss', loss_output['normal_cos'].item(), self.iter_step)
+                        
+                        self.writer.add_scalar('Statistics/beta', self.model.module.density.get_beta().item() if self.if_distributed else self.model.density.get_beta().item(), self.iter_step)
+                        self.writer.add_scalar('Statistics/alpha', 1. / self.model.module.density.get_beta().item() if self.if_distributed else 1. / self.model.density.get_beta().item(), self.iter_step)
+                        self.writer.add_scalar('Statistics/psnr', psnr.item(), self.iter_step)
+                        self.writer.add_scalar('Statistics/epoch', epoch, self.iter_step)
+                        
+                        if self.Grid_MLP:
+                            self.writer.add_scalar('Statistics/lr0', self.optimizer.param_groups[0]['lr'], self.iter_step)
+                            self.writer.add_scalar('Statistics/lr1', self.optimizer.param_groups[1]['lr'], self.iter_step)
+                            self.writer.add_scalar('Statistics/lr2', self.optimizer.param_groups[2]['lr'], self.iter_step)
     
                 if not self.if_pixel_train:
                     self.train_dataset.change_sampling_idx(self.num_pixels)

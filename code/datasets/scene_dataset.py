@@ -486,7 +486,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
     def collate_fn(self, batch_list, if_pixel=False):
         # get list of dictionaries and returns input, ground_true as dictionary for all batch instances
-        print('-->>'); tic = time.time()
+        # tic = time.time()
         batch_list = zip(*batch_list)
 
         all_parsed = []
@@ -508,9 +508,10 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             else:
                 all_parsed.append(torch.LongTensor(entry))
 
-        print('-->.', all_parsed[0], time.time() - tic)
+        return_tuple = tuple(all_parsed)
 
-        return tuple(all_parsed)
+        # print('-->.', all_parsed[0], time.time() - tic)
+        return return_tuple
 
     default_collate = torch.utils.data.dataloader.default_collate
 

@@ -15,8 +15,8 @@ spec:
       containers:
       - name: gpu-container-rui
         # image: docker.io/jerrypiglet/rui_conda_inverse:public
-        image: gitlab-registry.nrp-nautilus.io/jerrypiglet/monosdf
-        # image: gitlab-registry.nrp-nautilus.io/jerrypiglet/monosdf-torch13.1
+        # image: gitlab-registry.nrp-nautilus.io/jerrypiglet/monosdf
+        image: gitlab-registry.nrp-nautilus.io/jerrypiglet/monosdf-torch13.1
         imagePullPolicy: IfNotPresent
         command:
         - "sh"
