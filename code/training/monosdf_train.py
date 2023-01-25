@@ -54,7 +54,7 @@ class MonoSDFTrainRunner():
             self.expname = self.opt.resume
             kwargs['is_continue'] = True
 
-        if kwargs['is_continue'] and kwargs['timestamp'] == 'latest':
+        if kwargs['is_continue'] and kwargs['timestamp'] == 'latest' and self.opt.ckpt_folder == '':
             if os.path.exists(os.path.join('../',kwargs['exps_folder_name'], self.expname)):
                 timestamps = os.listdir(os.path.join('../',kwargs['exps_folder_name'],self.expname))
                 if (len(timestamps)) == 0:
@@ -69,6 +69,8 @@ class MonoSDFTrainRunner():
         else:
             timestamp = kwargs['timestamp']
             is_continue = kwargs['is_continue']
+
+        if self.opt.cancel_train: assert is_continue
 
         if self.GPU_INDEX == 0:
             if self.if_cluster:
