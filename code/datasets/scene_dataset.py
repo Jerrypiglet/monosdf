@@ -139,6 +139,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 if_hdr=False, # if load HDR images (e.g. OpenRooms, kitchen)
                 if_pixel=False, # if return batch of random pixels
                 if_gt_data=True, 
+                if_overfit_train=False, 
                 center_crop_type='xxxx',
                 use_mask=False,
                 num_views=-1, 
@@ -163,6 +164,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         self.if_hdr = if_hdr
         self.if_pixel = if_pixel and self.split == 'train'
+        self.if_overfit_train = if_overfit_train
         
         assert os.path.exists(self.instance_dir), "Data directory is empty: %s"%self.instance_dir
 
@@ -401,9 +403,10 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         print('[SceneDatasetDN-%s] -> sample_frames(): %d train, %d val'%(self.split, self.train_frame_num, self.val_frame_num))
         print(self.val_frame_idx_list)
 
-        # if self.if_overfit_train:
-        #     assert len(self.train_frame_idx_list) >= self.val_frame_num
-        #     self.val_frame_idx_list = self.train_frame_idx_list[:self.val_frame_num]
+        if self.if_overfit_train:
+            assert len(self.train_frame_idx_list) >= self.val_frame_num
+            self.frame_idx_list = self.train_frame_idx_list[:self.val_frame_num]
+            print('[SceneDatasetDN-%s] -> sample_frames(): OVERFIT_TRAIN: %d val from train split'%(self.split, len(self.val_frame_idx_list)))
 
     def __len__(self):
         # if self.split == 'train':

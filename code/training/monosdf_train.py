@@ -8,6 +8,7 @@ from tqdm import tqdm
 import numpy as np
 import math
 import time
+from pathlib import Path
 
 import utils.general as utils
 import utils.plots as plt
@@ -19,6 +20,12 @@ from utils.general import BackprojectDepth
 from utils.plots import gamma2_th, get_surface_sliding
 
 import torch.distributed as dist
+
+def get_datetime():
+    # today = date.today()
+    now = datetime.now()
+    d1 = now.strftime("%Y%m%d-%H%M%S")
+    return d1
 
 class MonoSDFTrainRunner():
     def __init__(self, **kwargs):
@@ -41,6 +48,7 @@ class MonoSDFTrainRunner():
         scan_id = kwargs['scan_id'] if kwargs['scan_id'] != '' else self.conf.get_string('dataset.scan_id', default='')
         if scan_id != '':
             self.expname = self.expname + '_{0}'.format(scan_id)
+        self.expname = self.opt.datetime_str if self.opt.datetime_str != '' else get_datetime() + '-' + self.expname
 
         if self.opt.resume != '':
             self.expname = self.opt.resume
@@ -107,7 +115,8 @@ class MonoSDFTrainRunner():
         if self.if_cluster:
             dataset_conf['data_dir'] = '/ruidata/monosdf/data/' + dataset_conf['data_dir']
 
-        self.train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', **dataset_conf)
+        if not self.opt.cancel_train:
+            self.train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', **dataset_conf)
         self.if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
         self.if_hdr = self.conf.get_config('dataset').get('if_hdr', False)
 
@@ -115,32 +124,35 @@ class MonoSDFTrainRunner():
         val_frame_idx_input = dataset_conf.get('val_frame_idx_input', [])
         train_frame_idx_input = dataset_conf.get('train_frame_idx_input', [])
         if val_frame_num == -1 and train_frame_idx_input == [] and val_frame_idx_input == []:
-            self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', **dataset_conf)
+            self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', if_overfit_train=self.opt.if_overfit_train, **dataset_conf)
             shuffle_val = True
         else:
-            self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='val', **dataset_conf)
+            self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='val', if_overfit_train=self.opt.if_overfit_train, **dataset_conf)
             shuffle_val = False
 
         assert self.val_dataset.if_pixel == False
 
         self.max_total_iters = self.conf.get_int('train.max_total_iters', default=1000000)
-        self.ds_len = len(self.train_dataset) if not self.if_pixel_train else self.train_dataset.n_images
-        print('Finish loading data. Dataset size: {0}'.format(self.ds_len))
-        if ('scan' in scan_id and (int(scan_id[4:]) < 24 and int(scan_id[4:]) > 0)) or (not 'scan' in scan_id): # BlendedMVS, running for 200k iterations
-            # if not self.if_pixel_train:
-            self.nepochs = int(self.max_total_iters / self.ds_len)
-        print('RUNNING FOR {0}'.format(self.nepochs))
-        assert self.nepochs > 0
+        if not self.opt.cancel_train:
+            self.ds_len = len(self.train_dataset) if not self.if_pixel_train else self.train_dataset.n_images
+            print('Finish loading data. Dataset size: {0}'.format(self.ds_len))
+            if ('scan' in scan_id and (int(scan_id[4:]) < 24 and int(scan_id[4:]) > 0)) or (not 'scan' in scan_id): # BlendedMVS, running for 200k iterations
+                # if not self.if_pixel_train:
+                self.nepochs = int(self.max_total_iters / self.ds_len)
+            print('RUNNING FOR {0}'.format(self.nepochs))
+            assert self.nepochs > 0
 
-        self.train_dataloader = torch.utils.data.DataLoader(self.train_dataset,
-                                                            batch_size=self.batch_size if not self.if_pixel_train else self.conf.get_int('train.num_pixels'),
-                                                            shuffle=True if not self.if_pixel_train else False,
-                                                            collate_fn=self.train_dataset.collate_fn,
-                                                            num_workers=2 if self.if_cluster else 8)
+        if not self.opt.cancel_train:
+            self.train_dataloader = torch.utils.data.DataLoader(self.train_dataset,
+                                                                batch_size=self.batch_size if not self.if_pixel_train else self.conf.get_int('train.num_pixels'),
+                                                                shuffle=True if not self.if_pixel_train else False,
+                                                                collate_fn=self.train_dataset.collate_fn,
+                                                                num_workers=1 if self.if_cluster else 8)
+
         self.plot_dataloader = torch.utils.data.DataLoader(self.val_dataset,
                                                            batch_size=self.conf.get_int('plot.plot_nimgs'),
                                                            shuffle=shuffle_val,
-                                                           collate_fn=self.train_dataset.collate_fn
+                                                           collate_fn=self.val_dataset.collate_fn
                                                            )
 
         conf_model = self.conf.get_config('model')
@@ -150,27 +162,28 @@ class MonoSDFTrainRunner():
             self.model.cuda()
 
         self.loss = utils.get_class(self.conf.get_string('train.loss_class'))(**self.conf.get_config('loss'))
-
-        self.lr = self.conf.get_float('train.learning_rate')
-        self.lr_factor_for_grid = self.conf.get_float('train.lr_factor_for_grid', default=1.0)
         
-        if self.Grid_MLP:
-            self.optimizer = torch.optim.Adam([
-                {'name': 'encoding', 'params': list(self.model.implicit_network.grid_parameters()), 
-                    'lr': self.lr * self.lr_factor_for_grid},
-                {'name': 'net', 'params': list(self.model.implicit_network.mlp_parameters()) +\
-                    list(self.model.rendering_network.parameters()),
-                    'lr': self.lr},
-                {'name': 'density', 'params': list(self.model.density.parameters()),
-                    'lr': self.lr},
-            ], betas=(0.9, 0.99), eps=1e-15)
-        else:
-            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        
-        # Exponential learning rate scheduler
-        decay_rate = self.conf.get_float('train.sched_decay_rate', default=0.1)
-        decay_steps = self.nepochs * self.ds_len
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, decay_rate ** (1./decay_steps))
+        if not self.opt.cancel_train:
+            self.lr = self.conf.get_float('train.learning_rate')
+            self.lr_factor_for_grid = self.conf.get_float('train.lr_factor_for_grid', default=1.0)
+            
+            if self.Grid_MLP:
+                self.optimizer = torch.optim.Adam([
+                    {'name': 'encoding', 'params': list(self.model.implicit_network.grid_parameters()), 
+                        'lr': self.lr * self.lr_factor_for_grid},
+                    {'name': 'net', 'params': list(self.model.implicit_network.mlp_parameters()) +\
+                        list(self.model.rendering_network.parameters()),
+                        'lr': self.lr},
+                    {'name': 'density', 'params': list(self.model.density.parameters()),
+                        'lr': self.lr},
+                ], betas=(0.9, 0.99), eps=1e-15)
+            else:
+                self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+            
+            # Exponential learning rate scheduler
+            decay_rate = self.conf.get_float('train.sched_decay_rate', default=0.1)
+            decay_steps = self.nepochs * self.ds_len
+            self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, decay_rate ** (1./decay_steps))
 
         if self.if_distributed:
             self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[self.GPU_INDEX], broadcast_buffers=False, find_unused_parameters=True)
@@ -181,7 +194,11 @@ class MonoSDFTrainRunner():
         self.iter_step = 0
 
         if is_continue:
-            old_checkpnts_dir = os.path.join(self.expdir, timestamp, 'checkpoints')
+            if self.opt.ckpt_folder != '':
+                old_checkpnts_dir = str(Path('../exps') / self.opt.ckpt_folder / 'checkpoints')
+                assert Path(old_checkpnts_dir).exists(), old_checkpnts_dir
+            else:
+                old_checkpnts_dir = os.path.join(self.expdir, timestamp, 'checkpoints')
             
             ckpt_path = os.path.join(old_checkpnts_dir, 'ModelParameters', str(kwargs['checkpoint']) + ".pth")
             saved_model_state = torch.load(ckpt_path)
@@ -195,23 +212,28 @@ class MonoSDFTrainRunner():
             self.iter_step = saved_model_state['iter_step']
             # self.iter_step = 117900
 
-            data = torch.load(
-                os.path.join(old_checkpnts_dir, 'OptimizerParameters', str(kwargs['checkpoint']) + ".pth"))
-            self.optimizer.load_state_dict(data["optimizer_state_dict"])
+            if not self.opt.cancel_train:
+                data = torch.load(
+                    os.path.join(old_checkpnts_dir, 'OptimizerParameters', str(kwargs['checkpoint']) + ".pth"))
+                self.optimizer.load_state_dict(data["optimizer_state_dict"])
 
-            data = torch.load(
-                os.path.join(old_checkpnts_dir, self.scheduler_params_subdir, str(kwargs['checkpoint']) + ".pth"))
-            self.scheduler.load_state_dict(data["scheduler_state_dict"])
+                data = torch.load(
+                    os.path.join(old_checkpnts_dir, self.scheduler_params_subdir, str(kwargs['checkpoint']) + ".pth"))
+                self.scheduler.load_state_dict(data["scheduler_state_dict"])
 
         self.num_pixels = self.conf.get_int('train.num_pixels')
-        self.total_pixels_im = self.train_dataset.total_pixels_im
-        self.img_res = self.train_dataset.img_res
-        self.n_batches = len(self.train_dataloader)
+        self.total_pixels_im = self.train_dataset.total_pixels_im if not self.opt.cancel_train else self.val_dataset.total_pixels_im
+        self.img_res = self.train_dataset.img_res if not self.opt.cancel_train else self.val_dataset.img_res
         self.plot_freq = self.conf.get_int('train.plot_freq')
         self.checkpoint_freq = self.conf.get_int('train.checkpoint_freq', default=100)
         self.split_n_pixels = self.conf.get_int('train.split_n_pixels', default=10000)
         self.plot_conf = self.conf.get_config('plot')
         self.backproject = BackprojectDepth(1, self.img_res[0], self.img_res[1]).cuda()
+
+        if not self.opt.cancel_train:
+            self.n_batches = len(self.train_dataloader)
+        if self.opt.cancel_train:
+            self.nepochs = self.start_epoch
 
     def save_checkpoints(self, epoch, iter_step):
         torch.save(
@@ -244,7 +266,7 @@ class MonoSDFTrainRunner():
         # self.iter_step = 0
         for epoch in range(self.start_epoch, self.nepochs + 1):
 
-            if self.GPU_INDEX == 0 and epoch % self.checkpoint_freq == 0:
+            if self.GPU_INDEX == 0 and epoch % self.checkpoint_freq == 0 and not self.opt.cancel_train:
                 self.save_checkpoints(epoch, self.iter_step)
 
             '''
@@ -253,7 +275,7 @@ class MonoSDFTrainRunner():
 
             if self.GPU_INDEX == 0 and self.do_vis and epoch % self.plot_freq == 0:
                 self.model.eval()
-                self.train_dataset.change_sampling_idx(-1)
+                # self.train_dataset.change_sampling_idx(-1)
                 implicit_network = self.model.module.implicit_network if self.if_distributed else self.model.implicit_network
                 
                 #for data_index, (indices, model_input, ground_truth) in enumerate(self.train_dataloader):
@@ -316,6 +338,8 @@ class MonoSDFTrainRunner():
             '''
             TRAIN
             '''
+            if self.opt.cancel_train:
+                continue
 
             self.train_dataset.change_sampling_idx(self.num_pixels)
 

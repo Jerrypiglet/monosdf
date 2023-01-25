@@ -28,7 +28,7 @@ def parse_args():
     delete_parser.add_argument('-n', '--namespace', type=str, help='namespace')
     delete_parser.add_argument('--debug', action='store_true', help='if debugging')
 
-    sync_parser = subparsers.add_parser('sync', help='Delete a batch of jobs')
+    sync_parser = subparsers.add_parser('sync', help='sync to rclone storage')
     sync_parser.add_argument('option', type=str, help='The pattern to delete')
     sync_parser.add_argument('-a', '--all', action='store_true', help='If delete all (should be true)')
     sync_parser.add_argument('-n', '--namespace', type=str, help='namespace')
@@ -349,7 +349,7 @@ def delete(args, delete_all=False, answer=None):
         else:
             jobs = list(filter(lambda x: re.match(pattern, x[0]) and x[1] == '1', jobs))
     # pprint.pprint(jobs)
-    
+
     # if debug:
     print('Filtered jobs:', jobs)
     if len(jobs) == 0:
@@ -369,8 +369,12 @@ def delete(args, delete_all=False, answer=None):
 
 def sync(args):
     option = args.option
-    assert option in ['sum', 'vis', 'ckpt'], 'Sync options must be in (sum, vis, ckpt)!'
-    option_to_pattern_dict = {'sum': 'z-job-syncsum', 'vis': 'z-job-syncvis', 'ckpt': 'z-job-syncckpt'}
+    # assert option in ['sum', 'vis', 'ckpt'], 'Sync options must be in (sum, vis, ckpt)!'
+    # option_to_pattern_dict = {'sum': 'z-job-syncsum', 'vis': 'z-job-syncvis', 'ckpt': 'z-job-syncckpt'}
+    # option_to_yaml_dict = {'sum': 'rui_torch_job_syncSum.yaml', 'vis': 'rui_torch_job_syncVis.yaml', 'ckpt': 'rui_torch_job_syncCkpt.yaml'}
+
+    assert option in ['exps'], 'Sync options must be in (sum, vis, ckpt)!'
+    option_to_pattern_dict = {'exps': 'z-job-syncsum'}
     option_to_yaml_dict = {'sum': 'rui_torch_job_syncSum.yaml', 'vis': 'rui_torch_job_syncVis.yaml', 'ckpt': 'rui_torch_job_syncCkpt.yaml'}
 
     pattern = option_to_pattern_dict[option]

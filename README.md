@@ -132,6 +132,10 @@ python training/exp_runner.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id 
 [+] python training/exp_runner.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan1 --expname _gamma2_L2loss_4xreg_lr1e-4_decay25
 
 python evaluation/eval.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/openrooms_HDR_EST --checkpoint ../exps/public_re_3_v3pose_2048-main_xml-scene0008_00_more_HDR_EST_train_mlp_1/2023_01_18_21_57_14/checkpoints/ModelParameters/latest.pth
+
+** EVAL
+``` bash
+CUDA_VISIBLE_DEVICES=0 python training/exp_runner.py --conf confs/kitchen_hdr_est_grids.conf --scan_id trainval --expname _EVALTRAIN2023_01_23_21_23_38 --ckpt_folder kitchen_HDR_EST_grids_gamma2_randomPixel_fixedDepthHDR_trainval/2023_01_23_21_23_38 --is_continue --if_overfit_train --cancel_train
 ```
 
 ## cleaning up
@@ -144,7 +148,8 @@ python evaluation/eval.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan
 
 ## TODO
 - [] change training to handle rays instead of batchsize=1: change to random batch of rays
-- [] add datetime to taskname from rui_tool; instead of add when launching
+- [x] add datetime to taskname from rui_tool; instead of add when launching
+- [] better eval commands
 # Update
 MonoSDF is integrated to [SDFStudio](https://github.com/autonomousvision/sdfstudio), where monocular depth and normal cues can be applied to [UniSurf](https://github.com/autonomousvision/unisurf/tree/main/model) and [NeuS](https://github.com/Totoro97/NeuS/tree/main/models). Please check it out.
 
