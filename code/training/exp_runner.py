@@ -37,6 +37,7 @@ if __name__ == '__main__':
     parser.add_argument('--cancel_vis', default=False, action="store_true",
                         help='If set, cancel visualization in intermediate epochs.')
     parser.add_argument("--local_rank", type=int, required=False, help='local rank for DistributedDataParallel', default=0)
+    parser.add_argument("--datetime_str", type=str, required=False, help='', default='')
     parser.add_argument('--is_distributed', default=False, action="store_true", help='')
     parser.add_argument('--if_cluster', default=False, action="store_true", help='')
 

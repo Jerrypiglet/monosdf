@@ -491,7 +491,6 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         all_parsed = []
         for _, entry in enumerate(batch_list):
-            print(_, type(entry[0]))
             if type(entry[0]) is dict:
                 # make them all into a new dict
                 ret = {}

@@ -72,7 +72,10 @@ class MonoSDFTrainRunner():
             if is_continue:
                 self.timestamp = timestamp
             else:
-                self.timestamp = '{:%Y_%m_%d_%H_%M_%S}'.format(datetime.now())
+                if self.opt.datetime_str != '':
+                    self.timestamp = self.opt.datetime_str
+                else:
+                    self.timestamp = '{:%Y_%m_%d_%H_%M_%S}'.format(datetime.now())
             utils.mkdir_ifnotexists(os.path.join(self.expdir, self.timestamp))
 
             self.plots_dir = os.path.join(self.expdir, self.timestamp, 'plots')
@@ -133,7 +136,7 @@ class MonoSDFTrainRunner():
                                                             batch_size=self.batch_size if not self.if_pixel_train else self.conf.get_int('train.num_pixels'),
                                                             shuffle=True if not self.if_pixel_train else False,
                                                             collate_fn=self.train_dataset.collate_fn,
-                                                            num_workers=16 if self.if_cluster else 8)
+                                                            num_workers=2 if self.if_cluster else 8)
         self.plot_dataloader = torch.utils.data.DataLoader(self.val_dataset,
                                                            batch_size=self.conf.get_int('plot.plot_nimgs'),
                                                            shuffle=shuffle_val,
@@ -399,7 +402,6 @@ class MonoSDFTrainRunner():
                 self.scheduler.step()
 
             print('== Training epoch %d with train_dataloader... DONE'%epoch)
-
 
         if self.GPU_INDEX == 0:
             self.save_checkpoints(epoch, self.iter_step)

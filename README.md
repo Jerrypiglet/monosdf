@@ -134,6 +134,14 @@ python training/exp_runner.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id 
 python evaluation/eval.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/openrooms_HDR_EST --checkpoint ../exps/public_re_3_v3pose_2048-main_xml-scene0008_00_more_HDR_EST_train_mlp_1/2023_01_18_21_57_14/checkpoints/ModelParameters/latest.pth
 ```
 
+## cleaning up
+### remove exps
+- add task names to `clean_up_tasks.txt` (e.g. kitchen_HDR_EST_gridstmpppppp_trainval)
+- `python clean_up_tasks.py`
+### remove nautilus tasks
+- add task names to `clean_up_tasks.txt` (e.g. zz-torch-job-gpu20230125-005454-qzhdp or 20230125-005454)
+- `./cluster_control$ python rui_tool.py delete --all`
+
 ## TODO
 - [] change training to handle rays instead of batchsize=1: change to random batch of rays
 - [] add datetime to taskname from rui_tool; instead of add when launching
