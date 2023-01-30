@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 
 metadata:
-  name: rui-deployment-mono
+  name: rui-deployment-mono2
   namespace: mc-lab
   labels:
     user: ruizhu

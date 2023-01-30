@@ -16,7 +16,7 @@ with open(list_path) as f:
 task_list = [x.strip() for x in task_list]
 task_list_parent = [_.split('/')[0] for _ in task_list]
 task_list_parent_has_sub = [_.split('/')[0] for _ in task_list if len(_.split('/'))>1]
-task_list_dates = [_.replace('zz-torch-job-gpu', '')[:-6] for _ in task_list if _.startswith('zz-torch-job-gpu')] + [_ for _ in task_list if _.startswith('202')]
+task_list_dates = [_.replace('zz-torch-job-gpu', '').replace('zz-iris-job-gpu', '')[:-6] for _ in task_list if _.startswith('zz-torch-job-gpu') or _.startswith('zz-iris-job-gpu')] + [_ for _ in task_list if _.startswith('202')]
 
 # opt.debug = True
 # opt.debug = False
