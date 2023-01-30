@@ -159,7 +159,8 @@ class ImplicitNetworkGrid(nn.Module):
             num_levels=16,
             level_dim=2,
             divide_factor = 1.5, # used to normalize the points range for multi-res grid
-            use_grid_feature = True
+            use_grid_feature = True, 
+            spec = False, # separate spec from diffuse in pred. RGB, following rad-MLP
     ):
         super().__init__()
 
@@ -171,6 +172,7 @@ class ImplicitNetworkGrid(nn.Module):
         self.grid_feature_dim = num_levels * level_dim
         self.use_grid_feature = use_grid_feature
         dims[0] += self.grid_feature_dim
+        self.spec = spec
         
         print(f"using hash encoder with {num_levels} levels, each level with feature dim {level_dim}")
         print(f"resolution:{base_size} -> {end_size} with hash map size {logmap}")
