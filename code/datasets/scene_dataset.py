@@ -400,13 +400,14 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         self.frame_idx_list = self.train_frame_idx_list if self.split=='train' else self.val_frame_idx_list
 
-        print('[SceneDatasetDN-%s] -> sample_frames(): %d train, %d val'%(self.split, self.train_frame_num, self.val_frame_num))
-        print(self.val_frame_idx_list)
-
         if self.if_overfit_train:
             assert len(self.train_frame_idx_list) >= self.val_frame_num
-            self.frame_idx_list = self.train_frame_idx_list[:self.val_frame_num]
+            self.frame_idx_list = self.train_frame_idx_list[:min(self.val_frame_num, len(self.train_frame_idx_list))]
             print('[SceneDatasetDN-%s] -> sample_frames(): OVERFIT_TRAIN: %d val from train split'%(self.split, len(self.val_frame_idx_list)))
+            print(self.frame_idx_list)
+        else:
+            print('[SceneDatasetDN-%s] -> sample_frames(): %d train, %d val'%(self.split, self.train_frame_num, self.val_frame_num))
+            print(self.val_frame_idx_list)
 
     def __len__(self):
         # if self.split == 'train':
@@ -417,10 +418,11 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             return len(self.sampling_idx)
         else:
             if self.if_sample_frames:
-                if self.split == 'train':
-                    return self.train_frame_num
-                elif self.split == 'val':
-                    return self.val_frame_num
+                return len(self.frame_idx_list)
+                # if self.split == 'train':
+                #     return self.train_frame_num
+                # elif self.split == 'val':
+                #     return self.val_frame_num
             else:
                 return self.n_images
 

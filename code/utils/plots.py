@@ -25,7 +25,7 @@ def gamma2_th(x):
 
 def plot(
     implicit_network, indices, plot_data, path, epoch, img_res, plot_nimgs, resolution, grid_boundary, 
-    if_hdr=False, level=0, 
+    if_hdr=False, level=0, PREFIX='', 
     if_tensorboard=False, writer=None, tid=0, batch_id=0, 
     ):
 
@@ -37,27 +37,30 @@ def plot(
         if if_hdr:
             plot_data['rgb_eval'] = torch.clip(gamma2_th(plot_data['rgb_eval']), 0., 1.)
             plot_data['rgb_gt'] = torch.clip(gamma2_th(plot_data['rgb_gt']), 0., 1.)
-        plot_images(plot_data['rgb_eval'], plot_data['rgb_gt'], path, epoch, plot_nimgs, img_res, indices)
+        plot_images(plot_data['rgb_eval'], plot_data['rgb_gt'], path, epoch, plot_nimgs, img_res, indices, PREFIX=PREFIX)
 
         # plot normal maps
         print('-[def plot()] plot normal maps...')
-        plot_normal_maps(plot_data['normal_map'], plot_data['normal_gt'], path, epoch, plot_nimgs, img_res, indices)
+        plot_normal_maps(plot_data['normal_map'], plot_data['normal_gt'], path, epoch, plot_nimgs, img_res, indices, PREFIX=PREFIX)
 
         # plot depth maps
         print('-[def plot()] plot depth maps...')
-        plot_depth_maps(plot_data['depth_map'], plot_data['depth_gt'], path, epoch, plot_nimgs, img_res, indices)
+        plot_depth_maps(plot_data['depth_map'], plot_data['depth_gt'], path, epoch, plot_nimgs, img_res, indices, PREFIX=PREFIX)
 
         # concat output images to single large image
         print('-[def plot()] plot merge...')
         images = []
         for name in ["rendering", "depth", "normal"]:
-            images.append(cv2.imread('{0}/{1}_{2}_{3}.png'.format(path, name, epoch, indices[0])))        
+            images.append(cv2.imread('{0}/{1}{2}_{3}_{4}.png'.format(path, PREFIX, name, epoch, indices[0])))        
 
         images = np.concatenate(images, axis=1)
-        cv2.imwrite('{0}/merge_{1}_{2}.png'.format(path, epoch, indices[0]), images)
+        merge_path = '{0}/{1}merge_{2}_{3}.png'.format(path, PREFIX, epoch, indices[0])
+        cv2.imwrite(merge_path, images)
 
         if if_tensorboard:
-            writer.add_image('VAL_merge/%d'%(batch_id), images[:, :, [2, 1, 0]], tid, dataformats='HWC')
+            writer.add_image('%s_merge/%d'%(PREFIX, batch_id), images[:, :, [2, 1, 0]], tid, dataformats='HWC')
+
+        return merge_path
 
 avg_pool_3d = torch.nn.AvgPool3d(2, stride=2)
 upsample = torch.nn.Upsample(scale_factor=2, mode='nearest')
@@ -492,7 +495,7 @@ def get_grid(points, resolution, input_min=None, input_max=None, eps=0.1):
             "shortest_axis_index": shortest_axis}
 
 
-def plot_normal_maps(normal_maps, ground_true, path, epoch, plot_nrow, img_res, indices):
+def plot_normal_maps(normal_maps, ground_true, path, epoch, plot_nrow, img_res, indices, PREFIX=''):
     ground_true = ground_true.cuda()
     normal_maps = torch.cat((normal_maps, ground_true), dim=0)
     normal_maps_plot = lin2img(normal_maps, img_res)
@@ -506,13 +509,13 @@ def plot_normal_maps(normal_maps, ground_true, path, epoch, plot_nrow, img_res, 
     tensor = (tensor * scale_factor).astype(np.uint8)
 
     img = Image.fromarray(tensor)
-    img.save('{0}/normal_{1}_{2}.png'.format(path, epoch, indices[0]))
+    img.save('{0}/{1}normal_{2}_{3}.png'.format(path, PREFIX, epoch, indices[0]))
 
     #import pdb; pdb.set_trace()
     #trans_topil(normal_maps_plot[0, :, :, 260:260+680]).save('{0}/2normal_{1}.png'.format(path, epoch))
 
 
-def plot_images(rgb_points, ground_true, path, epoch, plot_nrow, img_res, indices, exposure=False):
+def plot_images(rgb_points, ground_true, path, epoch, plot_nrow, img_res, indices, exposure=False, PREFIX=''):
     ground_true = ground_true.cuda()
 
     output_vs_gt = torch.cat((rgb_points, ground_true), dim=0)
@@ -529,12 +532,12 @@ def plot_images(rgb_points, ground_true, path, epoch, plot_nrow, img_res, indice
 
     img = Image.fromarray(tensor)
     if exposure:
-        img.save('{0}/exposure_{1}_{2}.png'.format(path, epoch, indices[0]))
+        img.save('{0}/{1}exposure_{2}_{3}.png'.format(path, PREFIX, epoch, indices[0]))
     else:
-        img.save('{0}/rendering_{1}_{2}.png'.format(path, epoch, indices[0]))
+        img.save('{0}/{1}rendering_{2}_{3}.png'.format(path, PREFIX, epoch, indices[0]))
 
 
-def plot_depth_maps(depth_maps, ground_true, path, epoch, plot_nrow, img_res, indices):
+def plot_depth_maps(depth_maps, ground_true, path, epoch, plot_nrow, img_res, indices, PREFIX=''):
     ground_true = ground_true.cuda()
     depth_maps = torch.cat((depth_maps[..., None], ground_true), dim=0)
     depth_maps_plot = lin2img(depth_maps, img_res)
@@ -546,7 +549,7 @@ def plot_depth_maps(depth_maps, ground_true, path, epoch, plot_nrow, img_res, in
                                          nrow=plot_nrow).cpu().detach().numpy()
     tensor = tensor.transpose(1, 2, 0)
     
-    save_path = '{0}/depth_{1}_{2}.png'.format(path, epoch, indices[0])
+    save_path = '{0}/{1}depth_{2}_{3}.png'.format(path, PREFIX, epoch, indices[0])
     
     plt.imsave(save_path, tensor[:, :, 0], cmap='viridis')
     

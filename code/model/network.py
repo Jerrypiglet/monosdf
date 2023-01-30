@@ -387,7 +387,7 @@ class RenderingNetwork(nn.Module):
             rendering_input.shape: (num_images*num_pixes, D')
 
             if_pixel_input = False: indices: (num_images)
-            if_pixel_input = True: indices: (num_images)
+            if_pixel_input = True: indices: (num_images*num_pixels)
             '''
             if not if_pixel_input:
                 image_code = self.embeddings[indices].expand(rendering_input.shape[0], -1) # (num_images=1, D) -> (num_images=1*num_pixels*num_samples), D) -> 

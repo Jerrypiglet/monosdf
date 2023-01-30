@@ -34,10 +34,10 @@ def parse_args():
     sync_parser.add_argument('-n', '--namespace', type=str, help='namespace')
     sync_parser.add_argument('--debug', action='store_true', help='if debugging')
 
-    tb_parser = subparsers.add_parser('tb', help='Delete a batch of jobs')
+    tb_parser = subparsers.add_parser('tb', help='Create a Tensorboard job')
     # tb_parser.add_argument('-n', '--namespace', type=str, help='namespace')
     tb_parser.add_argument('--debug', action='store_true', help='if debugging')
-    tb_parser.add_argument('-f', '--file', type=str, help='Path to template file', default='')
+    tb_parser.add_argument('-f', '--file', type=str, help='Path to template file', default='rui_tb_job.yaml')
     tb_parser.add_argument('--cpur', type=int, help='request of CPUs', default=1)
     tb_parser.add_argument('--cpul', type=int, help='limit of CPUs', default=4)
     tb_parser.add_argument('--memr', type=int, help='request of memory in Gi', default=12)
@@ -249,7 +249,7 @@ def create(args):
     else:
         command_str = args.string
         datetime_str = get_datetime()
-        command_str = command_str.replace('DATE', datetime_str)
+        # command_str = command_str.replace('DATE', datetime_str)
         print('------------ Command string:')
         print(command_str)
 
@@ -260,7 +260,7 @@ def create(args):
         print(yaml_content)
 
         command_str = command_str.replace('python', args.python_path)
-        command_str += ' --datetime_str %s'%datetime_str
+        command_str += ' --datetime_str_input %s'%datetime_str
         # if args.deploy:
         #     pass
 
@@ -335,30 +335,34 @@ def delete(args, delete_all=False, answer=None):
     list_path = args.file
     assert pattern != '' or list_path != ''
 
+    jobs_to_delete = []
+
     if list_path != '':
         with open(list_path) as f:
             task_list = f.read().splitlines() 
         task_list = [x.strip() for x in task_list]
         task_list = [_ for _ in task_list if _.startswith('zz-torch-job-gpu')]
         task_list = [_[:-6] for _ in task_list]
-        jobs = [_ for _ in jobs if _[0] in task_list]
-    elif pattern != '':
+        jobs_to_delete += [_ for _ in jobs if _[0] in task_list]
+    
+    if pattern != '':
         print('Trying to delete pattern %s...'%pattern)
         if args.all or delete_all:
-            jobs = list(filter(lambda x: re.match(pattern, x[0]), jobs))
+            jobs_ = list(filter(lambda x: re.match(pattern, x[0]), jobs))
         else:
-            jobs = list(filter(lambda x: re.match(pattern, x[0]) and x[1] == '1', jobs))
+            jobs_ = list(filter(lambda x: re.match(pattern, x[0]) and x[1] == '1', jobs))
+        jobs_to_delete += jobs_
     # pprint.pprint(jobs)
 
     # if debug:
-    print('Filtered jobs:', jobs)
-    if len(jobs) == 0:
+    print('Filtered jobs:', jobs_to_delete)
+    if len(jobs_to_delete) == 0:
         return
     while True:
         if answer is None:
             answer = input('Do you want to delete those jobs?[y/n]')
         if answer == 'y':
-            job_names = [x[0] for x in jobs]
+            job_names = [x[0] for x in jobs_to_delete]
             ret = run_command('kubectl delete jobs ' + ' '.join(job_names), namespace)
             if isinstance(ret, bytes):
                 ret = ret.decode()

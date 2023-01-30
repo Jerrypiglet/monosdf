@@ -8,6 +8,7 @@ from tqdm import tqdm
 import numpy as np
 import math
 import time
+import copy
 from pathlib import Path
 
 import utils.general as utils
@@ -43,56 +44,75 @@ class MonoSDFTrainRunner():
         self.GPU_INDEX = kwargs['gpu_index']
         self.if_distributed = kwargs['if_distributed']
 
-        self.expname = self.opt.expname_pre + self.conf.get_string('train.expname') + kwargs['expname']
-
+        self.exp_name = self.opt.prefix + self.conf.get_string('train.expname')
         scan_id = kwargs['scan_id'] if kwargs['scan_id'] != '' else self.conf.get_string('dataset.scan_id', default='')
         if scan_id != '':
-            self.expname = self.expname + '_{0}'.format(scan_id)
-        self.expname = self.opt.datetime_str if self.opt.datetime_str != '' else get_datetime() + '-' + self.expname
-
-        if self.opt.resume != '':
-            self.expname = self.opt.resume
-            kwargs['is_continue'] = True
-
-        if kwargs['is_continue'] and kwargs['timestamp'] == 'latest' and self.opt.ckpt_folder == '':
-            if os.path.exists(os.path.join('../',kwargs['exps_folder_name'], self.expname)):
-                timestamps = os.listdir(os.path.join('../',kwargs['exps_folder_name'],self.expname))
-                if (len(timestamps)) == 0:
-                    is_continue = False
-                    timestamp = None
-                else:
-                    timestamp = sorted(timestamps)[-1]
-                    is_continue = True
-            else:
-                is_continue = False
-                timestamp = None
+            self.exp_name = self.exp_name + '_{0}'.format(scan_id)
+        self.exp_name += self.opt.append
+        datetime_str = self.opt.datetime_str_input if self.opt.datetime_str_input != '' else get_datetime()
+        if 'DATE' in self.exp_name:
+            self.exp_name = self.exp_name.replace('DATE', datetime_str) # e.g. '20230129-162337-K-kitchen_HDR_EST_grids_trainval_tmp'
         else:
-            timestamp = kwargs['timestamp']
-            is_continue = kwargs['is_continue']
+            self.exp_name = datetime_str + '-' + self.exp_name
+        print('=====self.exp_name', self.exp_name)
 
-        if self.opt.cancel_train: assert is_continue
+        self.load_from_task = ''
+        if self.opt.resume:
+            ckpts_root = os.path.join('../', kwargs['exps_folder_name'])
+            if self.opt.load_from != '':
+                self.load_from_task = self.opt.load_from
+            else:
+                self.load_from_task = self.exp_name
+                
+            exps = [_ for _ in os.listdir(ckpts_root) if _.startswith(self.load_from_task)]
+            if len(exps) != 1:
+                print('No exact match for [%s] found among:'%self.load_from_task, os.listdir(ckpts_root))
+                raise RuntimeError
+            self.load_from_task = exps[1]
+
+        # if self.opt.resume and self.opt.load_from == '':
+        #     if os.path.exists(os.path.join('../',kwargs['exps_folder_name'], self.exp_name)):
+        #         datetime_strs = os.listdir(os.path.join('../',kwargs['exps_folder_name'],self.exp_name))
+        #         if (len(datetime_strs)) == 0:
+        #             resume = False
+        #             datetime_str = None
+        #         else:
+        #             datetime_str = sorted(datetime_strs)[-1]
+        #             resume = True
+        #     else:
+        #         resume = False
+        #         datetime_str = None
+        # else:
+        #     datetime_str = kwargs['datetime_str']
+        #     resume = self.opt.resume
+
+        # if self.opt.cancel_train: assert resume
 
         if self.GPU_INDEX == 0:
             if self.if_cluster:
-                self.expdir = os.path.join(self.exps_folder_name, self.expname)
+                self.expdir = os.path.join(self.exps_folder_name, self.exp_name)
             else:
                 utils.mkdir_ifnotexists(os.path.join('../',self.exps_folder_name))
-                self.expdir = os.path.join('../', self.exps_folder_name, self.expname)
+                self.expdir = os.path.join('../', self.exps_folder_name, self.exp_name)
             utils.mkdir_ifnotexists(self.expdir)
-            if is_continue:
-                self.timestamp = timestamp
-            else:
-                if self.opt.datetime_str != '':
-                    self.timestamp = self.opt.datetime_str
-                else:
-                    self.timestamp = '{:%Y_%m_%d_%H_%M_%S}'.format(datetime.now())
-            utils.mkdir_ifnotexists(os.path.join(self.expdir, self.timestamp))
+            # if resume:
+            #     datetime_str = datetime_str
+            # else:
+            #     if self.opt.datetime_str != '':
+            #         datetime_str = self.opt.datetime_str
+            #     else:
+            #         # datetime_str = '{:%Y_%m_%d_%H_%M_%S}'.format(datetime.now())
+            #         datetime_str = get_datetime()
 
-            self.plots_dir = os.path.join(self.expdir, self.timestamp, 'plots')
+            self.expdir = self.expdir.replace('DATE', self.expdir)
+
+            utils.mkdir_ifnotexists(os.path.join(self.expdir))
+
+            self.plots_dir = os.path.join(self.expdir, 'plots')
             utils.mkdir_ifnotexists(self.plots_dir)
 
             # create checkpoints dirs
-            self.checkpoints_path = os.path.join(self.expdir, self.timestamp, 'checkpoints')
+            self.checkpoints_path = os.path.join(self.expdir, 'checkpoints')
             utils.mkdir_ifnotexists(self.checkpoints_path)
             self.model_params_subdir = "ModelParameters"
             self.optimizer_params_subdir = "OptimizerParameters"
@@ -102,7 +122,7 @@ class MonoSDFTrainRunner():
             utils.mkdir_ifnotexists(os.path.join(self.checkpoints_path, self.optimizer_params_subdir))
             utils.mkdir_ifnotexists(os.path.join(self.checkpoints_path, self.scheduler_params_subdir))
 
-            os.system("""cp -r {0} "{1}" """.format(kwargs['conf'], os.path.join(self.expdir, self.timestamp, 'runconf.conf')))
+            os.system("""cp -r {0} "{1}" """.format(kwargs['conf'], os.path.join(self.expdir, 'runconf.conf')))
 
         # if (not self.GPU_INDEX == 'ignore'):
         #     os.environ["CUDA_VISIBLE_DEVICES"] = '{0}'.format(self.GPU_INDEX)
@@ -122,19 +142,22 @@ class MonoSDFTrainRunner():
         self.if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
         self.if_hdr = self.conf.get_config('dataset').get('if_hdr', False)
 
-        val_frame_num = dataset_conf.get('val_frame_num', -1)
-        val_frame_idx_input = dataset_conf.get('val_frame_idx_input', [])
-        train_frame_idx_input = dataset_conf.get('train_frame_idx_input', [])
-        if val_frame_num == -1 and train_frame_idx_input == [] and val_frame_idx_input == []:
-            self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', if_overfit_train=self.opt.if_overfit_train, **dataset_conf)
-            shuffle_val = True
-        else:
-            self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='val', if_overfit_train=self.opt.if_overfit_train, **dataset_conf)
-            shuffle_val = False
-
+        # val_frame_num = dataset_conf.get('val_frame_num', -1)
+        # val_frame_idx_input = dataset_conf.get('val_frame_idx_input', [])
+        # train_frame_idx_input = dataset_conf.get('train_frame_idx_input', [])
+        # if val_frame_num == -1 and train_frame_idx_input == [] and val_frame_idx_input == []:
+        #     self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', if_overfit_train=self.opt.if_overfit_train, **dataset_conf)
+        #     shuffle_val = True
+        # else:
+        self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='val', if_overfit_train=self.opt.if_overfit_train, **dataset_conf)
         assert self.val_dataset.if_pixel == False
+        shuffle_val = False
 
-        self.max_total_iters = self.conf.get_int('train.max_total_iters', default=1000000)
+        dataset_conf_vis_train = copy.deepcopy(dataset_conf); dataset_conf_vis_train.pop('val_frame_num'), dataset_conf_vis_train.pop('if_pixel')
+        self.vis_train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', if_overfit_train=True, val_frame_num=12, if_pixel=False, **dataset_conf_vis_train)
+        assert self.vis_train_dataset.if_pixel == False
+
+        self.max_total_iters = self.conf.get_int('train.max_total_iters', default=1500000)
         if not self.opt.cancel_train:
             self.ds_len = len(self.train_dataset) if not self.if_pixel_train else self.train_dataset.n_images
             print('Finish loading data. Dataset size: {0}'.format(self.ds_len))
@@ -151,7 +174,13 @@ class MonoSDFTrainRunner():
                                                                 collate_fn=self.train_dataset.collate_fn,
                                                                 num_workers=1 if self.if_cluster else 8)
 
-        self.plot_dataloader = torch.utils.data.DataLoader(self.val_dataset,
+        self.vis_val_dataloader = torch.utils.data.DataLoader(self.val_dataset,
+                                                           batch_size=self.conf.get_int('plot.plot_nimgs'),
+                                                           shuffle=shuffle_val,
+                                                           collate_fn=self.val_dataset.collate_fn
+                                                           )
+
+        self.vis_train_dataloader = torch.utils.data.DataLoader(self.vis_train_dataset,
                                                            batch_size=self.conf.get_int('plot.plot_nimgs'),
                                                            shuffle=shuffle_val,
                                                            collate_fn=self.val_dataset.collate_fn
@@ -195,12 +224,11 @@ class MonoSDFTrainRunner():
         self.start_epoch = 0
         self.iter_step = 0
 
-        if is_continue:
-            if self.opt.ckpt_folder != '':
-                old_checkpnts_dir = str(Path('../exps') / self.opt.ckpt_folder / 'checkpoints')
-                assert Path(old_checkpnts_dir).exists(), old_checkpnts_dir
-            else:
-                old_checkpnts_dir = os.path.join(self.expdir, timestamp, 'checkpoints')
+        if self.load_from_task != '':
+            old_checkpnts_dir = str(Path('../exps') / self.opt.load_from / 'checkpoints')
+            assert Path(old_checkpnts_dir).exists(), old_checkpnts_dir
+            # else:
+            #     old_checkpnts_dir = os.path.join(self.expdir, datetime_str, 'checkpoints')
             
             ckpt_path = os.path.join(old_checkpnts_dir, 'ModelParameters', str(kwargs['checkpoint']) + ".pth")
             saved_model_state = torch.load(ckpt_path)
@@ -260,7 +288,7 @@ class MonoSDFTrainRunner():
             os.path.join(self.checkpoints_path, self.scheduler_params_subdir, "latest.pth"))
 
     def run(self):
-        print("training...")
+        print("training exp [%s]..."%self.exp_name)
         if self.GPU_INDEX == 0 :
             self.writer = SummaryWriter(log_dir=os.path.join(self.plots_dir, 'logs'))
             print('writing logs to ->', os.path.join(self.plots_dir, 'logs'))
@@ -282,11 +310,10 @@ class MonoSDFTrainRunner():
                 
                 #for data_index, (indices, model_input, ground_truth) in enumerate(self.train_dataloader):
 
-                print('== Evaluating epoch %d plot_dataloader (%d batches)...'%(epoch, len(self.plot_dataloader)))
 
                 # exporting mesh from SDF
                 mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
-                print('- Exporting mesh to %s...'%mesh_path)
+                print('- Exporting mesh to %s... (res %d)'%(mesh_path, self.plot_conf.get('resolution')))
                 with torch.no_grad():
                     mesh = get_surface_sliding(path=self.plots_dir, 
                                 epoch=epoch, 
@@ -300,40 +327,41 @@ class MonoSDFTrainRunner():
                 # utils.mkdir_ifnotexists(self.plots_dir)
                 mesh.export(mesh_path, 'ply')
 
-                # indices, model_input, ground_truth = next(iter(self.plot_dataloader))
-                for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(self.plot_dataloader)):
-                    print(model_input['image_path'])
-                    model_input["intrinsics"] = model_input["intrinsics"].cuda()
-                    model_input["uv"] = model_input["uv"].cuda()
-                    model_input['pose'] = model_input['pose'].cuda()
-                    
-                    split = utils.split_input(model_input, self.total_pixels_im, n_pixels=self.split_n_pixels)
-                    res = []
-                    for s in tqdm(split):
-                        out = self.model(s, indices)
-                        d = {'rgb_values': out['rgb_values'].detach(),
-                            'normal_map': out['normal_map'].detach(),
-                            'depth_values': out['depth_values'].detach()}
-                        if 'rgb_un_values' in out:
-                            d['rgb_un_values'] = out['rgb_un_values'].detach()
-                        res.append(d)
+                # indices, model_input, ground_truth = next(iter(self.vis_val_dataloader))
+                for vis_split, dataloader in zip(['VAL-', 'TRAIN-'], [self.vis_val_dataloader, self.vis_train_dataloader]):
+                # for vis_split, dataloader in zip(['TRAIN-'], [self.vis_train_dataloader]):
+                    print('== Evaluating epoch %d %svis_dataloader (%d batches)...'%(epoch, vis_split, len(dataloader)))
+                    for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(dataloader)):
+                        model_input["intrinsics"] = model_input["intrinsics"].cuda()
+                        model_input["uv"] = model_input["uv"].cuda()
+                        model_input['pose'] = model_input['pose'].cuda()
+                        
+                        split = utils.split_input(model_input, self.total_pixels_im, n_pixels=self.split_n_pixels)
+                        res = []
+                        for s in tqdm(split):
+                            out = self.model(s, indices)
+                            d = {'rgb_values': out['rgb_values'].detach(),
+                                'normal_map': out['normal_map'].detach(),
+                                'depth_values': out['depth_values'].detach()}
+                            if 'rgb_un_values' in out:
+                                d['rgb_un_values'] = out['rgb_un_values'].detach()
+                            res.append(d)
 
-                    # print('-- Plotting...')
-                    batch_size = ground_truth['rgb'].shape[0]
-                    model_outputs = utils.merge_output(res, self.total_pixels_im, batch_size)
-                    plot_data = self.get_plot_data(model_input, model_outputs, model_input['pose'], ground_truth['rgb'], ground_truth['normal'], ground_truth['depth'])
-                    # print('-- plt.plot...')
+                        batch_size = ground_truth['rgb'].shape[0]
+                        model_outputs = utils.merge_output(res, self.total_pixels_im, batch_size)
+                        plot_data = self.get_plot_data(model_input, model_outputs, model_input['pose'], ground_truth['rgb'], ground_truth['normal'], ground_truth['depth'])
 
-                    plt.plot(implicit_network,
-                            indices,
-                            plot_data,
-                            self.plots_dir,
-                            epoch,
-                            self.img_res,
-                            if_hdr=self.if_hdr, 
-                            if_tensorboard=True, writer=self.writer, tid=self.iter_step, batch_id=data_index, 
-                            **self.plot_conf
-                            )
+                        plt.plot(implicit_network,
+                                indices,
+                                plot_data,
+                                self.plots_dir,
+                                epoch,
+                                self.img_res,
+                                if_hdr=self.if_hdr, 
+                                PREFIX=vis_split, 
+                                if_tensorboard=True, writer=self.writer, tid=self.iter_step, batch_id=data_index, 
+                                **self.plot_conf
+                                )
 
                 self.model.train()
 
@@ -394,8 +422,8 @@ class MonoSDFTrainRunner():
                 if self.GPU_INDEX == 0:
                     print(
                         '{0}_{1} [{2}] ({3}/{4}): loss = {5}, rgb_loss = {6}, eikonal_loss = {7}, psnr = {8}, bete={9}, alpha={10}; [{11}]'
-                            .format(self.expname, 
-                                    self.timestamp, epoch, data_index, n_batches, loss.item(),
+                            .format(self.exp_name, 
+                                    datetime_str, epoch, data_index, n_batches, loss.item(),
                                     loss_output['rgb_loss'].item(),
                                     loss_output['eikonal_loss'].item(),
                                     psnr.item(),
@@ -429,7 +457,7 @@ class MonoSDFTrainRunner():
 
             print('== Training epoch %d with train_dataloader... DONE'%epoch)
 
-        if self.GPU_INDEX == 0:
+        if self.GPU_INDEX == 0 and not self.opt.cancel_train:
             self.save_checkpoints(epoch, self.iter_step)
 
         
