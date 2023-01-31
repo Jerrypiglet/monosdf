@@ -95,18 +95,18 @@ class ImplicitNetwork(nn.Module):
 
         return x
 
-    def gradient(self, x):
+    def gradient_sdf(self, x):
         x.requires_grad_(True)
         y = self.forward(x)[:,:1]
         d_output = torch.ones_like(y, requires_grad=False, device=y.device)
-        gradients = torch.autograd.grad(
+        gradients_sdf = torch.autograd.grad(
             outputs=y,
             inputs=x,
             grad_outputs=d_output,
             create_graph=True,
             retain_graph=True,
             only_inputs=True)[0]
-        return gradients
+        return gradients_sdf
 
     def get_outputs(self, x):
         x.requires_grad_(True)
@@ -118,7 +118,7 @@ class ImplicitNetwork(nn.Module):
             sdf = torch.minimum(sdf, sphere_sdf)
         feature_vectors = output[:, 1:]
         d_output = torch.ones_like(sdf, requires_grad=False, device=sdf.device)
-        gradients = torch.autograd.grad(
+        gradients_sdf = torch.autograd.grad(
             outputs=sdf,
             inputs=x,
             grad_outputs=d_output,
@@ -126,7 +126,7 @@ class ImplicitNetwork(nn.Module):
             retain_graph=True,
             only_inputs=True)[0]
 
-        return sdf, feature_vectors, gradients
+        return sdf, feature_vectors, gradients_sdf
 
     def get_sdf_vals(self, x):
         sdf = self.forward(x)[:,:1]
@@ -160,7 +160,7 @@ class ImplicitNetworkGrid(nn.Module):
             level_dim=2,
             divide_factor = 1.5, # used to normalize the points range for multi-res grid
             use_grid_feature = True, 
-            spec = False, # separate spec from diffuse in pred. RGB, following rad-MLP
+            debug=False, 
     ):
         super().__init__()
 
@@ -172,7 +172,8 @@ class ImplicitNetworkGrid(nn.Module):
         self.grid_feature_dim = num_levels * level_dim
         self.use_grid_feature = use_grid_feature
         dims[0] += self.grid_feature_dim
-        self.spec = spec
+
+        self.debug = debug
         
         print(f"using hash encoder with {num_levels} levels, each level with feature dim {level_dim}")
         print(f"resolution:{base_size} -> {end_size} with hash map size {logmap}")
@@ -211,7 +212,7 @@ class ImplicitNetworkGrid(nn.Module):
                 out_dim = dims[l + 1] - dims[0]
             else:
                 out_dim = dims[l + 1]
-
+            
             lin = nn.Linear(dims[l], out_dim)
 
             if geometric_init:
@@ -258,40 +259,42 @@ class ImplicitNetworkGrid(nn.Module):
 
         x = input_dict
 
-        for l in range(0, self.num_layers - 1):
+        for l in range(0, self.num_layers - 1): # 0, 1, 2
             lin = getattr(self, "lin" + str(l))
-
             if l in self.skip_in:
                 x = torch.cat([x, input_dict], 1) / np.sqrt(2)
-
+            if self.debug: print(l, '-->', x.shape, lin)
             x = lin(x)
-
-            if l < self.num_layers - 2:
+            if l < self.num_layers - 2: # 0, 1
                 x = self.softplus(x)
+            if self.debug: print(l, x.shape, '-->')
+                
+        return {
+            'sdf': x[:, :1], 
+            'feature': x[:, 1:]
+            }
 
-        return x
-
-    def gradient(self, x):
+    def gradient_sdf(self, x):
         x.requires_grad_(True)
-        y = self.forward(x)[:,:1]
+        y = self.forward(x)['sdf']
         d_output = torch.ones_like(y, requires_grad=False, device=y.device)
-        gradients = torch.autograd.grad(
+        gradients_sdf = torch.autograd.grad(
             outputs=y,
             inputs=x,
             grad_outputs=d_output,
             create_graph=True,
             retain_graph=True,
             only_inputs=True)[0]
-        return gradients
+        return gradients_sdf
 
     def get_outputs(self, x):
         x.requires_grad_(True)
-        output = self.forward(x)
-        sdf = output[:,:1]
+        output_dict = self.forward(x)
+        sdf = output_dict['sdf']
 
-        feature_vectors = output[:, 1:]
+        feature_vectors = output_dict['feature']
         d_output = torch.ones_like(sdf, requires_grad=False, device=sdf.device)
-        gradients = torch.autograd.grad(
+        gradients_sdf = torch.autograd.grad(
             outputs=sdf,
             inputs=x,
             grad_outputs=d_output,
@@ -299,10 +302,10 @@ class ImplicitNetworkGrid(nn.Module):
             retain_graph=True,
             only_inputs=True)[0]
 
-        return sdf, feature_vectors, gradients
+        return sdf, feature_vectors, gradients_sdf
 
     def get_sdf_vals(self, x):
-        sdf = self.forward(x)[:,:1]
+        sdf = self.forward(x)['sdf']
         return sdf
 
     def mlp_parameters(self):
@@ -331,11 +334,17 @@ class RenderingNetwork(nn.Module):
             multires_view=0,
             per_image_code = False, 
             if_hdr=False, 
+            spec = False, # separate spec from diffuse in pred. RGB, following rad-MLP
+            debug = False, 
+
     ):
         super().__init__()
 
         self.mode = mode
         dims = [d_in + feature_vector_size] + dims + [d_out]
+
+        self.debug = debug
+        self.spec = spec
 
         self.embedview_fn = None
         if multires_view > 0:
@@ -362,7 +371,12 @@ class RenderingNetwork(nn.Module):
 
         for l in range(0, self.num_layers - 1):
             out_dim = dims[l + 1]
+
             lin = nn.Linear(dims[l], out_dim)
+            if self.spec:
+                if l == self.num_layers-3:
+                    lin = nn.Linear(dims[l]-3, out_dim)
+            if self.debug: print(l, lin)
 
             if weight_norm:
                 lin = nn.utils.weight_norm(lin)
@@ -400,21 +414,60 @@ class RenderingNetwork(nn.Module):
             
         x = rendering_input
 
-        for l in range(0, self.num_layers - 1):
-            lin = getattr(self, "lin" + str(l))
+        # for l in range(0, self.num_layers - 1):
+        #     lin = getattr(self, "lin" + str(l))
 
-            x = lin(x)
+        #     if self.debug: print(l, '-->', x.shape, lin)
+        #     x = lin(x)
 
-            if l < self.num_layers - 2:
+        #     if l < self.num_layers - 2:
+        #         x = self.relu(x)
+        #     if self.debug: print(l, x.shape, '-->')
+
+        if self.spec:
+            assert self.if_hdr
+            for l in range(0, self.num_layers - 3): # 0, 1, 2
+                lin = getattr(self, "lin" + str(l))
+                if self.debug: print(l, '-->', x.shape, lin)
+                x = lin(x)
+                # if l < self.num_layers - 2: # 0, 1
                 x = self.relu(x)
-        
-        if self.if_hdr:
-            x = self.relu(x)
+                if self.debug: print(l, x.shape, '-->')
+
+            color_diff, x = x[:, :3], x[:, 3:]
+
+            for l in range(self.num_layers - 3, self.num_layers - 1): # 3, 4
+                lin = getattr(self, "lin" + str(l))
+                if self.debug: print(l, '-->', x.shape, lin)
+                x = lin(x)
+                # if l < self.num_layers - 1: # 3
+                x = self.relu(x)
+                if self.debug: print(l, x.shape, '-->')
+
+            color_spec = x
+            rgb = color_diff + color_spec
+
+            return {
+                'rgb': rgb, 
+                'rgb_diff': color_diff,
+                'rgb_spec': color_spec,
+            }
+
         else:
-            x = self.sigmoid(x)
+            for l in range(0, self.num_layers - 1): # 0, 1, 2
+                lin = getattr(self, "lin" + str(l))
+                if self.debug: print(l, '-->', x.shape, lin)
+                x = lin(x)
+                if l < self.num_layers - 2: # 0, 1
+                    x = self.relu(x)
+                if self.debug: print(l, x.shape, '-->')
+                    
+            if self.if_hdr:
+                x = self.relu(x)
+            else:
+                x = self.sigmoid(x)
 
-        return x
-
+            return {'rgb': x}
 
 class MonoSDFNetwork(nn.Module):
 
@@ -439,6 +492,7 @@ class MonoSDFNetwork(nn.Module):
             self.implicit_network = ImplicitNetwork(self.feature_vector_size, 0.0 if self.white_bkgd else self.scene_bounding_sphere, **conf.get_config('implicit_network'))
         
         self.rendering_network = RenderingNetwork(self.feature_vector_size, **conf.get_config('rendering_network'), if_hdr=self.if_hdr)
+        self.spec = conf.get_config('rendering_network').get_bool('spec', False)
         
         self.density = LaplaceDensity(**conf.get_config('density'))
         sampling_method = conf.get_string('sampling_method', default="errorbounded")
@@ -481,7 +535,7 @@ class MonoSDFNetwork(nn.Module):
         dirs = ray_dirs.unsqueeze(1).repeat(1,N_samples,1)
         dirs_flat = dirs.reshape(-1, 3)
 
-        sdf, feature_vectors, gradients = self.implicit_network.get_outputs(points_flat)
+        sdf, feature_vectors, gradients_sdf = self.implicit_network.get_outputs(points_flat)
         
         '''
         if_pixel_input=False: indices.shape = (batch_size)
@@ -489,12 +543,14 @@ class MonoSDFNetwork(nn.Module):
         '''
 
         # points_flat: (N_pixels*N_samples, 3)
-        rgb_flat = self.rendering_network(points_flat, gradients, dirs_flat, feature_vectors, indices, if_pixel_input=if_pixel_input)
+        rendering_output_dict = self.rendering_network(points_flat, gradients_sdf, dirs_flat, feature_vectors, indices, if_pixel_input=if_pixel_input)
+        rgb_flat = rendering_output_dict['rgb']
         rgb = rgb_flat.reshape(-1, N_samples, 3)
 
         weights = self.volume_rendering(z_vals, sdf)
 
         rgb_values = torch.sum(weights.unsqueeze(-1) * rgb, 1)
+
         
         depth_values = torch.sum(weights * z_vals, 1, keepdims=True) / (weights.sum(dim=1, keepdims=True) +1e-8)
         # we should scale rendered distance to depth along z direction
@@ -515,6 +571,15 @@ class MonoSDFNetwork(nn.Module):
             'weights': weights,
         }
 
+        if self.spec:
+            rgb_spec_flat = rendering_output_dict['rgb_spec']
+            rgb_spec = rgb_spec_flat.reshape(-1, N_samples, 3)
+            rgb_spec_values = torch.sum(weights.unsqueeze(-1) * rgb_spec, 1)
+            output.update({
+                'rgb_spec': rgb_spec, 
+                'rgb_spec_values': rgb_spec_values, 
+            })
+            
         if self.training:
             # Sample points for the eikonal loss
             n_eik_points = batch_size * num_pixels
@@ -528,14 +593,14 @@ class MonoSDFNetwork(nn.Module):
             neighbour_points = eikonal_points + (torch.rand_like(eikonal_points) - 0.5) * 0.01   
             eikonal_points = torch.cat([eikonal_points, neighbour_points], 0)
                    
-            grad_theta = self.implicit_network.gradient(eikonal_points)
+            grad_theta = self.implicit_network.gradient_sdf(eikonal_points)
             
             # split gradient to eikonal points and heighbour ponits
             output['grad_theta'] = grad_theta[:grad_theta.shape[0]//2]
             output['grad_theta_nei'] = grad_theta[grad_theta.shape[0]//2:]
         
         # compute normal map
-        normals = gradients / (gradients.norm(2, -1, keepdim=True) + 1e-6)
+        normals = gradients_sdf / (gradients_sdf.norm(2, -1, keepdim=True) + 1e-6)
         normals = normals.reshape(-1, N_samples, 3)
         normal_map = torch.sum(weights.unsqueeze(-1) * normals, 1)
         

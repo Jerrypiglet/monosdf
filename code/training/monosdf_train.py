@@ -308,24 +308,22 @@ class MonoSDFTrainRunner():
                 # self.train_dataset.change_sampling_idx(-1)
                 implicit_network = self.model.module.implicit_network if self.if_distributed else self.model.implicit_network
                 
-                #for data_index, (indices, model_input, ground_truth) in enumerate(self.train_dataloader):
-
-
                 # exporting mesh from SDF
-                mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
-                print('- Exporting mesh to %s... (res %d)'%(mesh_path, self.plot_conf.get('resolution')))
-                with torch.no_grad():
-                    mesh = get_surface_sliding(path=self.plots_dir, 
-                                epoch=epoch, 
-                                sdf=lambda x: implicit_network(x)[:, 0], 
-                                resolution=self.plot_conf.get('resolution'), 
-                                grid_boundary=self.plot_conf.get('grid_boundary'), 
-                                level=0,  
-                                return_mesh=True,  
-                                )
-                print('-> Exported.')
-                # utils.mkdir_ifnotexists(self.plots_dir)
-                mesh.export(mesh_path, 'ply')
+                if not self.opt.cancel_mesh:
+                    mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
+                    print('- Exporting mesh to %s... (res %d)'%(mesh_path, self.plot_conf.get('resolution')))
+                    with torch.no_grad():
+                        mesh = get_surface_sliding(path=self.plots_dir, 
+                                    epoch=epoch, 
+                                    sdf=lambda x: implicit_network(x)['sdf'].squeeze(1), 
+                                    resolution=self.plot_conf.get('resolution'), 
+                                    grid_boundary=self.plot_conf.get('grid_boundary'), 
+                                    level=0,  
+                                    return_mesh=True,  
+                                    )
+                    print('-> Exported.')
+                    # utils.mkdir_ifnotexists(self.plots_dir)
+                    mesh.export(mesh_path, 'ply')
 
                 # indices, model_input, ground_truth = next(iter(self.vis_val_dataloader))
                 for vis_split, dataloader in zip(['VAL-', 'TRAIN-'], [self.vis_val_dataloader, self.vis_train_dataloader]):
@@ -421,9 +419,9 @@ class MonoSDFTrainRunner():
                 CUDA_VISIBLE_DEVICES = os.environ['CUDA_VISIBLE_DEVICES'] if 'CUDA_VISIBLE_DEVICES' in os.environ else -1, 
                 if self.GPU_INDEX == 0:
                     print(
-                        '{0}_{1} [{2}] ({3}/{4}): loss = {5}, rgb_loss = {6}, eikonal_loss = {7}, psnr = {8}, bete={9}, alpha={10}; [{11}]'
+                        '{0} [{2}] ({3}/{4}): loss = {5}, rgb_loss = {6}, eikonal_loss = {7}, psnr = {8}, bete={9}, alpha={10}; [{11}]'
                             .format(self.exp_name, 
-                                    datetime_str, epoch, data_index, n_batches, loss.item(),
+                                    epoch, data_index, n_batches, loss.item(),
                                     loss_output['rgb_loss'].item(),
                                     loss_output['eikonal_loss'].item(),
                                     psnr.item(),
