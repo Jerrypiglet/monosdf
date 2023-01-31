@@ -36,9 +36,10 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', default='latest', type=str,
                         help='The checkpoint epoch of the run to be used in case of continuing from a previous run.')
     parser.add_argument('--scan_id', type=str, default='', help='If set, taken to be the scan id.')
+    parser.add_argument('--cancel_train', default=False, action="store_true", help='If set, cancel training')
     parser.add_argument('--cancel_vis', default=False, action="store_true",
                         help='If set, cancel visualization in intermediate epochs.')
-    parser.add_argument('--cancel_train', default=False, action="store_true", help='If set, cancel training')
+    parser.add_argument('--cancel_mesh', default=False, action="store_true", help='If set, cancel dumping mesh in val')
     
     parser.add_argument("--local_rank", type=int, required=False, help='local rank for DistributedDataParallel', default=0)
     parser.add_argument("--datetime_str_input", type=str, required=False, help='', default='')
