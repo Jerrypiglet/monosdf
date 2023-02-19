@@ -159,7 +159,7 @@ class ScaleAndShiftInvariantLoss(nn.Module):
         self.__prediction_ssi = scale.view(1, -1) * prediction + shift.view(1, -1)
 
         total = self.__data_loss(self.__prediction_ssi, target, mask, if_pixel_input=if_pixel_input)
-        print(target.shape, mask.shape, torch.sum(mask))
+        # print(target.shape, mask.shape, torch.sum(mask))
         if self.__alpha > 0 and not if_pixel_input: # 'gradient loss not supported for pixel batch mode'
             assert False, 'Rui: disabled'
             total += self.__alpha * self.__regularization_loss(self.__prediction_ssi, target, mask)

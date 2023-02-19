@@ -36,7 +36,7 @@ class ImplicitNetwork(nn.Module):
             embed_fn, input_ch = get_embedder(multires, input_dims=d_in)
             self.embed_fn = embed_fn
             dims[0] = input_ch
-        print(multires, dims)
+        # print(multires, dims)
         self.num_layers = len(dims)
         self.skip_in = skip_in
 

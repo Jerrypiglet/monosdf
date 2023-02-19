@@ -6,6 +6,31 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import argparse
 
+def vis_disp_colormap(disp_array_, normalize=True, min_and_scale=None, valid_mask=None, cmap_name='jet'):
+    disp_array = disp_array_.copy()
+    cm = plt.get_cmap(cmap_name) # the larger the hotter; all cmaps: https://matplotlib.org/stable/tutorials/colors/colormaps.html
+    if valid_mask is not None:
+        assert valid_mask.shape==disp_array.shape
+        assert valid_mask.dtype==bool
+    else:
+        valid_mask = np.ones_like(disp_array).astype(bool)
+    
+    if normalize:
+        if min_and_scale is None:
+            depth_min = np.amin(disp_array[valid_mask])
+            disp_array -= depth_min
+            depth_scale = 1./(1e-6+np.amax(disp_array[valid_mask]))
+            disp_array = disp_array * depth_scale
+            min_and_scale = [depth_min, depth_scale]
+        else:
+            disp_array -= min_and_scale[0]
+            disp_array = disp_array * min_and_scale[1]
+
+    disp_array = np.clip(disp_array, 0., 1.)
+    disp_array = (cm(disp_array)[:, :, :3] * 255).astype(np.uint8)
+    
+    return disp_array, min_and_scale
+
 def str2bool(v):
     if isinstance(v, bool):
        return v
@@ -103,35 +128,6 @@ def get_datetime():
     d1 = now.strftime("%Y%m%d-%H%M%S")
     return d1
     return not any(l)
-
-def vis_disp_colormap(disp_array_, file=None, normalize=True, min_and_scale=None, valid_mask=None, cmap_name='jet'):
-    disp_array = disp_array_.copy()
-    cm = plt.get_cmap(cmap_name) # the larger the hotter
-    if valid_mask is not None:
-        assert valid_mask.shape==disp_array.shape
-        assert valid_mask.dtype==np.bool
-    else:
-        valid_mask = np.ones_like(disp_array).astype(np.bool)
-    
-    if normalize:
-        if min_and_scale is None:
-            depth_min = np.amin(disp_array[valid_mask])
-            disp_array -= depth_min
-            depth_scale = 1./(1e-6+np.amax(disp_array[valid_mask]))
-            disp_array = disp_array * depth_scale
-            min_and_scale = [depth_min, depth_scale]
-        else:
-            disp_array -= min_and_scale[0]
-            disp_array = disp_array * min_and_scale[1]
-    disp_array = np.clip(disp_array, 0., 1.)
-    disp_array = (cm(disp_array)[:, :, :3] * 255).astype(np.uint8)
-    
-    if file is not None:
-        from PIL import Image, ImageFont, ImageDraw
-        disp_Image = Image.fromarray(disp_array)
-        disp_Image.save(file)
-    else:
-        return disp_array, min_and_scale
 
 def colorize(gray, palette):
     # gray: numpy array of the label and 1*3N size list palette

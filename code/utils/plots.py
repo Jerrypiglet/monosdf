@@ -11,6 +11,7 @@ from tqdm import tqdm
 from utils import rend_util
 import utils.general as utils
 from utils.general import trans_topil
+from utils.utils_misc import vis_disp_colormap
 
 # def gamma2_th(x):
 #     return x ** (1./2.2)
@@ -58,12 +59,41 @@ def plot(
         cv2.imwrite(merge_path, images)
 
         if if_tensorboard:
-            resized = cv2.resize(images[:, :, [2, 1, 0]], (images.shape[1]//2, images.shape[0]//2), interpolation=cv2.INTER_AREA)
-            writer.add_image('%s_merge/%d'%(PREFIX, batch_id), resized, tid, dataformats='HWC')
+            # resized = cv2.resize(images[:, :, [2, 1, 0]], (images.shape[1]//2, images.shape[0]//2), interpolation=cv2.INTER_AREA)
+            # writer.add_image('%s_merge/%d'%(PREFIX, batch_id), resized, tid, dataformats='HWC')
+            H, W = img_res[0], img_res[1]
+            mask = plot_data['mask'].detach().cpu().squeeze().numpy().reshape(H, W)
+
+            rgb_est = plot_data['rgb_eval'].detach().cpu().squeeze().numpy().reshape(H, W, 3)
+            rgb_est = cv2.resize(rgb_est, (W//2, H//2), interpolation=cv2.INTER_AREA)
+            writer.add_image('%s_rgb_est/%d'%(PREFIX, batch_id), rgb_est, tid, dataformats='HWC')
+
+            depth_est = plot_data['depth_map'].detach().cpu().squeeze().numpy().reshape(H, W)
+            depth_est_vis = vis_disp_colormap(depth_est, normalize=True, valid_mask=mask==1., cmap_name='viridis')[0]
+            depth_est_vis = cv2.resize(depth_est_vis, (W//2, H//2), interpolation=cv2.INTER_AREA)
+            writer.add_image('%s_depth_est/%d'%(PREFIX, batch_id), depth_est_vis, tid, dataformats='HWC')
+
+            normal_est = plot_data['normal_map'].detach().cpu().squeeze().numpy().reshape(H, W, 3)
+            normal_est_vis = cv2.resize(normal_est, (W//2, H//2), interpolation=cv2.INTER_AREA)
+            writer.add_image('%s_normal_est/%d'%(PREFIX, batch_id), normal_est_vis, tid, dataformats='HWC')
 
             if if_gt_plotted is not None and not if_gt_plotted[PREFIX]:
-                mask = plot_data['mask'].detach().cpu().squeeze().numpy()
-                writer.add_image('%s_mask/%d'%(PREFIX, batch_id), mask, tid, dataformats='HW')
+                mask_vis = cv2.resize(mask, (W//2, H//2), interpolation=cv2.INTER_NEAREST)
+                writer.add_image('%s_mask/%d'%(PREFIX, batch_id), mask_vis, tid, dataformats='HW')
+
+                rgb_gt = plot_data['rgb_gt'].detach().cpu().squeeze().numpy().reshape(H, W, 3)
+                rgb_gt = cv2.resize(rgb_gt, (W//2, H//2), interpolation=cv2.INTER_AREA)
+                writer.add_image('%s_rgb_gt/%d'%(PREFIX, batch_id), rgb_gt, tid, dataformats='HWC')
+
+                depth_gt = plot_data['depth_gt'].detach().cpu().squeeze().numpy().reshape(H, W)
+                depth_gt_vis = vis_disp_colormap(depth_gt, normalize=True, valid_mask=mask==1., cmap_name='viridis')[0]
+                depth_gt_vis = cv2.resize(depth_gt_vis, (W//2, H//2), interpolation=cv2.INTER_AREA)
+                writer.add_image('%s_depth_gt/%d'%(PREFIX, batch_id), depth_gt_vis, tid, dataformats='HWC')
+
+                normal_gt = plot_data['normal_gt'].detach().cpu().squeeze().numpy().reshape(H, W, 3)
+                normal_gt_vis = cv2.resize(normal_gt, (W//2, H//2), interpolation=cv2.INTER_AREA)
+                writer.add_image('%s_normal_gt/%d'%(PREFIX, batch_id), normal_gt_vis, tid, dataformats='HWC')
+
 
 avg_pool_3d = torch.nn.AvgPool3d(2, stride=2)
 upsample = torch.nn.Upsample(scale_factor=2, mode='nearest')
@@ -254,7 +284,6 @@ def get_surface_trace(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2.0
         verts = verts + np.array([grid['xyz'][0][0], grid['xyz'][1][0], grid['xyz'][2][0]])
         '''
         I, J, K = faces.transpose()
-
         traces = [go.Mesh3d(x=verts[:, 0], y=verts[:, 1], z=verts[:, 2],
                             i=I, j=J, k=K, name='implicit_surface',
                             color='#ffffff', opacity=1.0, flatshading=False,
