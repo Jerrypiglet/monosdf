@@ -367,7 +367,7 @@ class RenderingNetwork(nn.Module):
 
         self.num_layers = len(dims)
         self.if_hdr = if_hdr
-        assert self.if_hdr, 'for now'
+        # assert self.if_hdr, 'for now'
 
         for l in range(0, self.num_layers - 1):
             out_dim = dims[l + 1]
@@ -518,7 +518,7 @@ class MonoSDFNetwork(nn.Module):
             ray_dirs = input_dict['ray_dirs'].unsqueeze(0) # (1, N_pixels, 3)
             cam_loc = input_dict['ray_cam_loc'] # (N_pixels, 3)
             ray_dirs_tmp = input_dict['ray_dirs_tmp'].unsqueeze(0) # (1, N_pixels, 3)
-            
+
         depth_scale = ray_dirs_tmp[0, :, 2:]
         
         batch_size, num_pixels, _ = ray_dirs.shape

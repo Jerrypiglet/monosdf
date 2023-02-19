@@ -2,6 +2,7 @@ import imp
 import os
 from datetime import datetime
 from pyhocon import ConfigFactory
+from pyhocon import ConfigTree
 import sys
 import torch
 from tqdm import tqdm
@@ -20,6 +21,8 @@ from model.loss import compute_scale_and_shift
 from utils.general import BackprojectDepth
 from utils.plots import gamma2_th, get_surface_sliding
 
+from tools.clean_funcs import remove_ckpt, remove_plots
+
 import torch.distributed as dist
 
 def get_datetime():
@@ -37,12 +40,18 @@ class MonoSDFTrainRunner():
         self.if_cluster = self.opt.if_cluster
         self.log_every_iter = 100 if self.if_cluster else 10
 
-        self.conf = ConfigFactory.parse_file(kwargs['conf'])
+        conf = ConfigFactory.parse_file(kwargs['conf'])
+        if kwargs['conf_add'] == '':
+            self.conf = conf
+        else:
+            conf_add = ConfigFactory.parse_file(kwargs['conf_add'])
+            self.conf = ConfigTree.merge_configs(conf, conf_add)
         self.batch_size = kwargs['batch_size']
         self.nepochs = kwargs['nepochs']
         self.exps_folder_name = kwargs['exps_folder_name']
         self.GPU_INDEX = kwargs['gpu_index']
         self.if_distributed = kwargs['if_distributed']
+        self.if_gt_plotted = {'TRAIN': False, 'VAL': False}
 
         self.exp_name = self.opt.prefix + self.conf.get_string('train.expname')
         scan_id = kwargs['scan_id'] if kwargs['scan_id'] != '' else self.conf.get_string('dataset.scan_id', default='')
@@ -53,7 +62,8 @@ class MonoSDFTrainRunner():
         if 'DATE' in self.exp_name:
             self.exp_name = self.exp_name.replace('DATE', datetime_str) # e.g. '20230129-162337-K-kitchen_HDR_EST_grids_trainval_tmp'
         else:
-            self.exp_name = datetime_str + '-' + self.exp_name
+            if not self.opt.resume:
+                self.exp_name = datetime_str + '-' + self.exp_name
         print('=====self.exp_name', self.exp_name)
 
         self.load_from_task = ''
@@ -63,12 +73,15 @@ class MonoSDFTrainRunner():
                 self.load_from_task = self.opt.load_from
             else:
                 self.load_from_task = self.exp_name
-                
+            
             exps = [_ for _ in os.listdir(ckpts_root) if _.startswith(self.load_from_task)]
-            if len(exps) != 1:
+            if len(exps) == 0:
                 print('No exact match for [%s] found among:'%self.load_from_task, os.listdir(ckpts_root))
                 raise RuntimeError
-            self.load_from_task = exps[1]
+            elif len(exps) > 1:
+                print('More than one matches for [%s] found; resuming from 1st one:'%self.load_from_task)
+                print(exps)
+            self.load_from_task = exps[0]
 
         # if self.opt.resume and self.opt.load_from == '':
         #     if os.path.exists(os.path.join('../',kwargs['exps_folder_name'], self.exp_name)):
@@ -225,7 +238,7 @@ class MonoSDFTrainRunner():
         self.iter_step = 0
 
         if self.load_from_task != '':
-            old_checkpnts_dir = str(Path('../exps') / self.opt.load_from / 'checkpoints')
+            old_checkpnts_dir = str(Path('../exps') / self.load_from_task / 'checkpoints')
             assert Path(old_checkpnts_dir).exists(), old_checkpnts_dir
             # else:
             #     old_checkpnts_dir = os.path.join(self.expdir, datetime_str, 'checkpoints')
@@ -287,6 +300,8 @@ class MonoSDFTrainRunner():
             {"epoch": epoch, 'iter_step': iter_step, "scheduler_state_dict": self.scheduler.state_dict()},
             os.path.join(self.checkpoints_path, self.scheduler_params_subdir, "latest.pth"))
 
+        remove_ckpt(self.checkpoints_path, 3)
+
     def run(self):
         print("training exp [%s]..."%self.exp_name)
         if self.GPU_INDEX == 0 :
@@ -295,6 +310,7 @@ class MonoSDFTrainRunner():
 
         # self.iter_step = 0
         for epoch in range(self.start_epoch, self.nepochs + 1):
+            remove_plots(self.plots_dir, 3)
 
             if self.GPU_INDEX == 0 and epoch % self.checkpoint_freq == 0 and not self.opt.cancel_train:
                 self.save_checkpoints(epoch, self.iter_step)
@@ -310,13 +326,15 @@ class MonoSDFTrainRunner():
                 
                 # exporting mesh from SDF
                 if not self.opt.cancel_mesh:
-                    mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
-                    print('- Exporting mesh to %s... (res %d)'%(mesh_path, self.plot_conf.get('resolution')))
+                    # mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
+                    mesh_path = '{0}/{1}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-2])
+                    resolution = 1024 if self.opt.cancel_train else self.plot_conf['resolution']
+                    print('- Exporting mesh to %s... (res %d)'%(mesh_path, resolution))
                     with torch.no_grad():
                         mesh = get_surface_sliding(path=self.plots_dir, 
                                     epoch=epoch, 
                                     sdf=lambda x: implicit_network(x)['sdf'].squeeze(1), 
-                                    resolution=self.plot_conf.get('resolution'), 
+                                    resolution=resolution, 
                                     grid_boundary=self.plot_conf.get('grid_boundary'), 
                                     level=0,  
                                     return_mesh=True,  
@@ -326,28 +344,32 @@ class MonoSDFTrainRunner():
                     mesh.export(mesh_path, 'ply')
 
                 # indices, model_input, ground_truth = next(iter(self.vis_val_dataloader))
-                for vis_split, dataloader in zip(['VAL-', 'TRAIN-'], [self.vis_val_dataloader, self.vis_train_dataloader]):
+                for vis_split, dataloader in zip(['VAL', 'TRAIN'], [self.vis_val_dataloader, self.vis_train_dataloader]):
                 # for vis_split, dataloader in zip(['TRAIN-'], [self.vis_train_dataloader]):
                     print('== Evaluating epoch %d %svis_dataloader (%d batches)...'%(epoch, vis_split, len(dataloader)))
                     for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(dataloader)):
                         model_input["intrinsics"] = model_input["intrinsics"].cuda()
                         model_input["uv"] = model_input["uv"].cuda()
                         model_input['pose'] = model_input['pose'].cuda()
-                        
+
                         split = utils.split_input(model_input, self.total_pixels_im, n_pixels=self.split_n_pixels)
                         res = []
                         for s in tqdm(split):
                             out = self.model(s, indices)
                             d = {'rgb_values': out['rgb_values'].detach(),
                                 'normal_map': out['normal_map'].detach(),
-                                'depth_values': out['depth_values'].detach()}
+                                'depth_values': out['depth_values'].detach(), 
+                            }
+                                # 'sdf': out['sdf'].detach()}
                             if 'rgb_un_values' in out:
                                 d['rgb_un_values'] = out['rgb_un_values'].detach()
                             res.append(d)
 
                         batch_size = ground_truth['rgb'].shape[0]
                         model_outputs = utils.merge_output(res, self.total_pixels_im, batch_size)
-                        plot_data = self.get_plot_data(model_input, model_outputs, model_input['pose'], ground_truth['rgb'], ground_truth['normal'], ground_truth['depth'])
+                        plot_data = self.get_plot_data(model_input, model_outputs, model_input['pose'], ground_truth['rgb'], ground_truth['normal'], ground_truth['depth'], ground_truth['mask'])
+
+                        # loss_output = self.loss(model_outputs, {k: v[0] for k, v in ground_truth.items()}, if_pixel_input=self.if_pixel_train)
 
                         plt.plot(implicit_network,
                                 indices,
@@ -357,9 +379,11 @@ class MonoSDFTrainRunner():
                                 self.img_res,
                                 if_hdr=self.if_hdr, 
                                 PREFIX=vis_split, 
-                                if_tensorboard=True, writer=self.writer, tid=self.iter_step, batch_id=data_index, 
+                                if_tensorboard=True, writer=self.writer, tid=self.iter_step, batch_id=data_index, if_gt_plotted=self.if_gt_plotted,
                                 **self.plot_conf
                                 )
+    
+                    self.if_gt_plotted[vis_split] = True
 
                 self.model.train()
 
@@ -400,7 +424,7 @@ class MonoSDFTrainRunner():
                 self.optimizer.zero_grad()
                 
                 model_outputs = self.model(model_input, indices, if_pixel_input=self.if_pixel_train)
-                
+
                 loss_output = self.loss(model_outputs, ground_truth, if_pixel_input=self.if_pixel_train)
                 loss = loss_output['loss']
                 loss.backward()
@@ -459,7 +483,7 @@ class MonoSDFTrainRunner():
             self.save_checkpoints(epoch, self.iter_step)
 
         
-    def get_plot_data(self, model_input, model_outputs, pose, rgb_gt, normal_gt, depth_gt):
+    def get_plot_data(self, model_input, model_outputs, pose, rgb_gt, normal_gt, depth_gt, mask):
         batch_size, num_samples, _ = rgb_gt.shape
 
         rgb_eval = model_outputs['rgb_values'].reshape(batch_size, num_samples, 3)
@@ -477,11 +501,14 @@ class MonoSDFTrainRunner():
 
         gt_depth = depth_gt.reshape(1, 1, self.img_res[0], self.img_res[1])
         gt_points = self.get_point_cloud(gt_depth, model_input, model_outputs)
-        
+
+        mask = mask.reshape(1, 1, self.img_res[0], self.img_res[1])
+
         plot_data = {
             'rgb_gt': rgb_gt,
             'normal_gt': (normal_gt + 1.)/ 2.,
             'depth_gt': depth_gt,
+            'mask': mask,
             'pose': pose,
             'rgb_eval': rgb_eval,
             'normal_map': normal_map,

@@ -24,7 +24,7 @@ def gamma2_th(x):
     return ret
 
 def plot(
-    implicit_network, indices, plot_data, path, epoch, img_res, plot_nimgs, resolution, grid_boundary, 
+    implicit_network, indices, plot_data, path, epoch, img_res, plot_nimgs, resolution, grid_boundary, if_gt_plotted=None, 
     if_hdr=False, level=0, PREFIX='', 
     if_tensorboard=False, writer=None, tid=0, batch_id=0, 
     ):
@@ -58,9 +58,12 @@ def plot(
         cv2.imwrite(merge_path, images)
 
         if if_tensorboard:
-            writer.add_image('%s_merge/%d'%(PREFIX, batch_id), images[:, :, [2, 1, 0]], tid, dataformats='HWC')
+            resized = cv2.resize(images[:, :, [2, 1, 0]], (images.shape[1]//2, images.shape[0]//2), interpolation=cv2.INTER_AREA)
+            writer.add_image('%s_merge/%d'%(PREFIX, batch_id), resized, tid, dataformats='HWC')
 
-        return merge_path
+            if if_gt_plotted is not None and not if_gt_plotted[PREFIX]:
+                mask = plot_data['mask'].detach().cpu().squeeze().numpy()
+                writer.add_image('%s_mask/%d'%(PREFIX, batch_id), mask, tid, dataformats='HW')
 
 avg_pool_3d = torch.nn.AvgPool3d(2, stride=2)
 upsample = torch.nn.Upsample(scale_factor=2, mode='nearest')

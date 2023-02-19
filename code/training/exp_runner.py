@@ -21,11 +21,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=1, help='input batch size')
     parser.add_argument('--nepoch', type=int, default=5000, help='number of epochs to train for')
-    parser.add_argument('--conf', type=str, default='./confs/dtu.conf')
+    parser.add_argument('--conf', type=str, default='', help='main conf')
+    parser.add_argument('--conf_add', type=str, default='', help='additional conf to merge into main conf')
     parser.add_argument('--append', type=str, default='')
     parser.add_argument('--prefix', type=str, default='')
     parser.add_argument("--exps_folder", type=str, default="exps")
-    parser.add_argument("--load_from", type=str, default='', help='load from previos ckpt')
+    parser.add_argument("--load_from", type=str, default='', help='load from previous ckpt')
     #parser.add_argument('--gpu', type=str, default='auto', help='GPU to use [default: GPU auto]')
     parser.add_argument('--resume', default=False, action="store_true",
                         help='If set, indicates continuing from a previous run; otherwise start a new run (which can be restored from a previous run indicated via --load_from')
@@ -75,7 +76,7 @@ if __name__ == '__main__':
         torch.distributed.barrier()
 
 
-    trainrunner = MonoSDFTrainRunner(opt=opt, conf=opt.conf,
+    trainrunner = MonoSDFTrainRunner(opt=opt, conf=opt.conf, conf_add=opt.conf_add, 
                                     batch_size=opt.batch_size,
                                     nepochs=opt.nepoch,
                                     # expname=opt.expname,

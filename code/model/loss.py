@@ -159,7 +159,9 @@ class ScaleAndShiftInvariantLoss(nn.Module):
         self.__prediction_ssi = scale.view(1, -1) * prediction + shift.view(1, -1)
 
         total = self.__data_loss(self.__prediction_ssi, target, mask, if_pixel_input=if_pixel_input)
+        print(target.shape, mask.shape, torch.sum(mask))
         if self.__alpha > 0 and not if_pixel_input: # 'gradient loss not supported for pixel batch mode'
+            assert False, 'Rui: disabled'
             total += self.__alpha * self.__regularization_loss(self.__prediction_ssi, target, mask)
 
         return total
@@ -246,7 +248,7 @@ class MonoSDFLoss(nn.Module):
         
         depth_pred = model_outputs['depth_values']
         normal_pred = model_outputs['normal_map'][None]
-        
+
         # assert self.if_gamma_loss
         if self.if_gamma_loss:
             rgb_loss = self.get_rgb_loss(self.gamma2(model_outputs['rgb_values']), self.gamma2(rgb_gt))
@@ -259,6 +261,7 @@ class MonoSDFLoss(nn.Module):
             eikonal_loss = torch.tensor(0.0).cuda().float()
 
         # only supervised the foreground normal
+        # if not if_no_sdf:
         mask = ((model_outputs['sdf'] > 0.).any(dim=-1) & (model_outputs['sdf'] < 0.).any(dim=-1))[None, :, None]
         # combine with GT
         mask = (ground_truth['mask'] > 0.5).cuda() & mask

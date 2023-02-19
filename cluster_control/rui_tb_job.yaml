@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tb-rui  # replace with ${USER_NAME}-tb
   labels:
     k8s-app: tensorboard
+  name: tb-rui  # replace with ${USER_NAME}-tb
 spec:
   replicas: 1
   selector:
@@ -18,16 +18,17 @@ spec:
         - name: tensorboard
           command: ["/bin/sh", "-c"]
           args: ["tensorboard --logdir /ruidata/monosdf/exps --port 6012"] # specify the directory to watch
-          image: tensorflow/tensorflow
+          # image: tensorflow/tensorflow
+          image: gitlab-registry.nrp-nautilus.io/jerrypiglet/monosdf-torch13.1-tb
           # ports:
           # - containerPort: 6006
           resources:
             requests:
-              cpu: "1"
-              memory: "2Gi"
+              cpu: "#CPUR" # "20"
+              memory: "#MEMRGi"  #"50Gi"
             limits:
-              cpu: "1"
-              memory: "4Gi"
+              cpu: "#CPUL" #"30"
+              memory: "#MEMLGi" #"100Gi"
           volumeMounts:
             # - name: cephfs
               # mountPath: /cephfs

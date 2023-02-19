@@ -39,6 +39,39 @@ Distributed training:
 CUDA_VISIBLE_DEVICES=0 WORLD_SIZE=1 python -m torch.distributed.launch --nproc_per_node 1 --nnodes=1 --node_rank=0 --master_port 47769  ...
 ```
 
+## data preparation
+### [1/2] dump from OpenRooms_RAW_loader
+
+``` bash
+(or-py310) ruizhu@ubuntu:~/Documents/Projects/OpenRooms_RAW_loader$ python convert_mitsubaScene3D_to_monosdf.py 
+(or-py310) ruizhu@ubuntu:~/Documents/Projects/OpenRooms_RAW_loader$ python convert_openroomsScene3D_to_monosdf.py 
+```
+
+### [2/2] extract estimated geometry from omnidata
+`` use newest torch and omnidata installation (conda env: monosdf-py38); otherwise fails``
+
+`NEW: batch extract:'
+
+``` bash
+(monosdf-py38) ruizhu@ubuntu:~/Documents/Projects/monosdf/preprocess$ python batch_extract.py --gpu_ids 0 1 2 4 5 6 7 --gpu_total 7
+```
+
+`extract for single scene:'
+
+``` bash
+(monosdf-py38)
+conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
+```
+
+Set {TASK} to depth, normal in 2 runs
+
+``` bash
+(monosdf-py38) ruizhu@ubuntu:~/Documents/Projects/monosdf/preprocess$ python extract_monocular_cues.py --task {TASK} --img_path ../data/kitchen/trainval/image --output_path ../data/kitchen/trainval --omnidata_path /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch --pretrained_models /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch/pretrained_models/
+
+(monosdf-py38) ruizhu@ubuntu:~/Documents/Projects/monosdf/preprocess$ python extract_monocular_cues.py --task {TASK} --img_path ../data/public_re_3_v3pose_2048-main_xml-scene0008_00_morerescaledSDR/scan1/image --output_path ../data/public_re_3_v3pose_2048-main_xml-scene0008_00_morerescaledSDR/scan1 --omnidata_path /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch --pretrained_models /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch/pretrained_models/
+
+```
+
 ## [scannet]
 
 ``` bash
@@ -57,17 +90,6 @@ scans:
 - 'scan1': train split; 202 frames
 - 'scan2': val split; 10 frames
 - 'trainval': train+val split; 212 frames
-### extract estimated geometry
-`` use newest torch and omnidata installation (conda env: monosdf); otherwise fails``
-
-``` bash
-(monosdf-py38)
-conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
-```
-
-``` bash
-(monosdf-py38) ruizhu@ubuntu:~/Documents/Projects/monosdf/preprocess$ python extract_monocular_cues.py --task normal --img_path ../data/kitchen/scan1/image --output_path ../data/kitchen/scan1 --omnidata_path /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch --pretrained_models /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch/pretrained_models/
-```
 
 **(GT geometry; PNG input)**
 
@@ -134,7 +156,7 @@ python training/exp_runner.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id 
 python evaluation/eval.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan1 --resolution 512 --eval_rendering --evals_folder ../eval_results/openrooms_HDR_EST --checkpoint ../exps/public_re_3_v3pose_2048-main_xml-scene0008_00_more_HDR_EST_train_mlp_1/2023_01_18_21_57_14/checkpoints/ModelParameters/latest.pth
 ```
 
-**EVAL
+## EVAL
 
 ``` bash
 CUDA_VISIBLE_DEVICES=0 python training/exp_runner.py --conf confs/kitchen_hdr_est_grids.conf --scan_id trainval --expname _EVALTRAIN2023_01_23_21_23_38 --resume_folder kitchen_HDR_EST_grids_gamma2_randomPixel_fixedDepthHDR_trainval/2023_01_23_21_23_38 --is_continue --if_overfit_train --cancel_train
@@ -152,6 +174,7 @@ CUDA_VISIBLE_DEVICES=0 python training/exp_runner.py --conf confs/kitchen_hdr_es
 - [] change training to handle rays instead of batchsize=1: change to random batch of rays
 - [x] add datetime to taskname from rui_tool; instead of add when launching
 - [] better eval commands
+- [] override options in cmd
 # Update
 MonoSDF is integrated to [SDFStudio](https://github.com/autonomousvision/sdfstudio), where monocular depth and normal cues can be applied to [UniSurf](https://github.com/autonomousvision/unisurf/tree/main/model) and [NeuS](https://github.com/Totoro97/NeuS/tree/main/models). Please check it out.
 

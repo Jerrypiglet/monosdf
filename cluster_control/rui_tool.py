@@ -23,7 +23,7 @@ def parse_args():
     
     delete_parser = subparsers.add_parser('delete', help='Delete a batch of jobs')
     delete_parser.add_argument('-p', '--pattern', type=str, help='The pattern to delete', default='')
-    delete_parser.add_argument('-f', '--file', type=str, help='file containing list of tast names to be deleted', default='../clean_up_tasks.txt')
+    delete_parser.add_argument('-f', '--file', type=str, help='file containing list of tast names to be deleted', default='clean_up_tasks.txt')
     delete_parser.add_argument('-a', '--all', action='store_true', help='If delete all (should be true)')
     delete_parser.add_argument('-n', '--namespace', type=str, help='namespace')
     delete_parser.add_argument('--debug', action='store_true', help='if debugging')
@@ -34,14 +34,18 @@ def parse_args():
     sync_parser.add_argument('-n', '--namespace', type=str, help='namespace')
     sync_parser.add_argument('--debug', action='store_true', help='if debugging')
 
+    '''
+    python rui_tool.py tb -f rui_tb_job.yaml
+    For tb-nightly related issue, install tb-nightly==2.11.0a20221109 which is compatible with Ubuntu 18
+    '''
     tb_parser = subparsers.add_parser('tb', help='Create a Tensorboard job')
     # tb_parser.add_argument('-n', '--namespace', type=str, help='namespace')
     tb_parser.add_argument('--debug', action='store_true', help='if debugging')
     tb_parser.add_argument('-f', '--file', type=str, help='Path to template file', default='rui_tb_job.yaml')
-    tb_parser.add_argument('--cpur', type=int, help='request of CPUs', default=1)
+    tb_parser.add_argument('--cpur', type=int, help='request of CPUs', default=2)
     tb_parser.add_argument('--cpul', type=int, help='limit of CPUs', default=4)
-    tb_parser.add_argument('--memr', type=int, help='request of memory in Gi', default=12)
-    tb_parser.add_argument('--meml', type=int, help='limit of memory in Gi', default=20)
+    tb_parser.add_argument('--memr', type=int, help='request of memory in Gi', default=8)
+    tb_parser.add_argument('--meml', type=int, help='limit of memory in Gi', default=16)
     tb_parser.add_argument('--namespace', type=str, help='namespace of the job', default='mc-lab')
 
 
@@ -221,94 +225,112 @@ def deploy_to_transfer(args):
     return return_url
 
 def create(args):
-    if args.resume != 'NoCkpt':
-        datetime_str = args.resume
-        tmp_yaml_filaname = 'tasks/%s/tmp_%s.yaml'%(datetime_str, datetime_str)
-        print('============ Resuming from YAML file: %s'%tmp_yaml_filaname)
-        yaml_content = load_yaml(tmp_yaml_filaname)
-        os.system('kubectl delete job '+yaml_content['metadata']['name'])
-        print('============ Task removed: %s'%yaml_content['metadata']['name'])
-        yaml_content['metadata']['name'] += '-re'
-        command_str = yaml_content['spec']['template']['spec']['containers'][0]['args'][0]
-        s_split = command_str.split(' ')
-        start_index = s_split.index('rclone')
-        for i in range(5):
-            s_split.pop(start_index)
-        insert_index = s_split.index('--if_cluster')
-        s_split.insert(insert_index+1, '--reset_latest_ckpt')
-        s_split.insert(insert_index+1, '--resume resume')
-        command_str = ' '.join(s_split)
-        command_str = command_str.replace('&& &&', '&&')
-        yaml_content['spec']['template']['spec']['containers'][0]['args'][0] = command_str
+    # if args.resume != 'NoCkpt':
+    #     datetime_str = args.resume
+    #     tmp_yaml_filaname = 'tasks/%s/tmp_%s.yaml'%(datetime_str, datetime_str)
+    #     print('============ Resuming from YAML file: %s'%tmp_yaml_filaname)
+    #     yaml_content = load_yaml(tmp_yaml_filaname)
+    #     os.system('kubectl delete job '+yaml_content['metadata']['name'])
+    #     print('============ Task removed: %s'%yaml_content['metadata']['name'])
+    #     yaml_content['metadata']['name'] += '-re'
+    #     command_str = yaml_content['spec']['template']['spec']['containers'][0]['args'][0]
+    #     s_split = command_str.split(' ')
+    #     start_index = s_split.index('rclone')
+    #     for i in range(5):
+    #         s_split.pop(start_index)
+    #     insert_index = s_split.index('--if_cluster')
+    #     s_split.insert(insert_index+1, '--reset_latest_ckpt')
+    #     s_split.insert(insert_index+1, '--resume resume')
+    #     command_str = ' '.join(s_split)
+    #     command_str = command_str.replace('&& &&', '&&')
+    #     yaml_content['spec']['template']['spec']['containers'][0]['args'][0] = command_str
 
-        tmp_yaml_filaname = tmp_yaml_filaname.replace('.yaml', '-RE.yaml')
-        dump_yaml(tmp_yaml_filaname, yaml_content)
-        print('============ YAML file dumped to %s'%tmp_yaml_filaname)
-        print(command_str)
+    #     tmp_yaml_filaname = tmp_yaml_filaname.replace('.yaml', '-RE.yaml')
+    #     dump_yaml(tmp_yaml_filaname, yaml_content)
+    #     print('============ YAML file dumped to %s'%tmp_yaml_filaname)
+    #     print(command_str)
 
+    # else:
+    command_str = args.string
+    datetime_str_current = get_datetime()
+    if args.resume == 'NoCkpt':
+        datetime_str = datetime_str_current
     else:
-        command_str = args.string
-        datetime_str = get_datetime()
-        # command_str = command_str.replace('DATE', datetime_str)
-        print('------------ Command string:')
-        print(command_str)
+        datetime_str = args.resume
+    # command_str = command_str.replace('DATE', datetime_str)
+    print('------------ Command string:')
+    print(command_str)
 
-        yaml_content = load_yaml(args.file)
-        var_replace_list = replace_vars(vars(args))
-        yaml_content = iterate_dict(yaml_content, var_replace_list=var_replace_list)
-        print('------------ yaml_content:')
-        print(yaml_content)
+    yaml_content = load_yaml(args.file)
+    var_replace_list = replace_vars(vars(args))
+    yaml_content = iterate_dict(yaml_content, var_replace_list=var_replace_list)
+    print('------------ yaml_content:')
+    print(yaml_content)
 
-        command_str = command_str.replace('python', args.python_path)
+    command_str = command_str.replace('python', args.python_path)
+    if args.resume == 'NoCkpt':
         command_str += ' --datetime_str_input %s'%datetime_str
-        # if args.deploy:
-        #     pass
+    else:
+        command_str += ' --resume'
+        command_str = command_str.replace('DATE', datetime_str)
+    # if args.deploy:
+    #     pass
 
-            # args.deploy_s3 += '-%s'%datetime_str
-            # if args.zip:
-            #     command_str = 'mkdir %s && rclone --progress copy %s/tmp.zip %s/ && cd %s && unzip tmp.zip && '%(args.deploy_tar, args.deploy_s3, args.deploy_tar, args.deploy_tar) + command_str
-            # else:
-            #     command_str = 'rclone --progress copy %s %s && cd %s && '%(args.deploy_s3, args.deploy_tar, args.deploy_tar) + command_str
+        # args.deploy_s3 += '-%s'%datetime_str
+        # if args.zip:
+        #     command_str = 'mkdir %s && rclone --progress copy %s/tmp.zip %s/ && cd %s && unzip tmp.zip && '%(args.deploy_tar, args.deploy_s3, args.deploy_tar, args.deploy_tar) + command_str
         # else:
-        if args.deploy:
-            args.deploy_tar += '/code-%s'%datetime_str
-            # deploy_to_s3(args)
-            transfer_url = deploy_to_transfer(args)
-            if args.service == 'transfer':
-                download_command = 'wget %s; unzip tmp.zip; '%transfer_url
-            elif args.service == 'ffsend': # first, download/install ffsend binary
-                download_command = '/ruidata/ffsend download %s; apt install unzip; unzip tmp.zip; '%transfer_url
-            elif args.service == 'mm1': # first, download/install ffsend binary
-                download_command = 'scp ruizhu@hyperion.ucsd.edu:/home/ruizhu/Documents/Projects/DPTSSN/train/tmp.zip .; unzip tmp.zip; '
-            elif args.service == 'rclone': # first, download/install ffsend binary
-                # download_command = 'curl https://rclone.org/install.sh | bash; mkdir ~/.config/rclone/; cp /code/rclone/* ~/.config/rclone/; rclone copy --progress --fast-list --checkers=64 --transfers=64 %s/ .'%deploy_s3
-                download_command = 'curl https://rclone.org/install.sh | bash; mkdir ~/.config/rclone/; cp /code/rclone/* ~/.config/rclone/; '
-                deploy_s3 ='s3mm1:train/train_ngc_2022/train_%s'%datetime_str
-                download_command += 'rclone copy --progress --fast-list --checkers=64 --transfers=64 %s/tmp.zip .; unzip tmp.zip; '%deploy_s3
-        else:
-            download_command = ''
+        #     command_str = 'rclone --progress copy %s %s && cd %s && '%(args.deploy_s3, args.deploy_tar, args.deploy_tar) + command_str
+    # else:
+    args.deploy_tar += '/code-%s'%datetime_str
+    if args.deploy:
+        #  and args.resume == 'NoCkpt':
+        # deploy_to_s3(args)
+        transfer_url = deploy_to_transfer(args)
+        if args.service == 'transfer':
+            assert False, 'Untested'
+            # download_command = 'wget %s; unzip tmp.zip; '%transfer_url
+        elif args.service == 'ffsend': # first, download/install ffsend binary
+            download_command = 'rm tmp.zip; /ruidata/ffsend download %s; apt install unzip; unzip -o tmp.zip; '%transfer_url
+        elif args.service == 'mm1': # first, download/install ffsend binary
+            assert False, 'Untested'
+            # download_command = 'scp ruizhu@hyperion.ucsd.edu:/home/ruizhu/Documents/Projects/DPTSSN/train/tmp.zip .; unzip tmp.zip; '
+        elif args.service == 'rclone': # first, download/install ffsend binary
+            assert False, 'Untested'
+            # download_command = 'curl https://rclone.org/install.sh | bash; mkdir ~/.config/rclone/; cp /code/rclone/* ~/.config/rclone/; rclone copy --progress --fast-list --checkers=64 --transfers=64 %s/ .'%deploy_s3
+            # download_command = 'curl https://rclone.org/install.sh | bash; mkdir ~/.config/rclone/; cp /code/rclone/* ~/.config/rclone/; '
+            # deploy_s3 ='s3mm1:train/train_ngc_2022/train_%s'%datetime_str
+            # download_command += 'rclone copy --progress --fast-list --checkers=64 --transfers=64 %s/tmp.zip .; unzip tmp.zip; '%deploy_s3
+    else:
+        download_command = ''
 
-        # command_str = args.command_str_pre
-        command_str = args.command_str_pre + 'mkdir %s; cd %s; '%(args.deploy_tar, args.deploy_tar) + download_command + command_str
-        command_str = command_str.replace('pip', args.pip_path)
-        # command_str = 'tensorboard --logdir . --port 6010'
-            
-        yaml_content['spec']['template']['spec']['containers'][0]['args'][0] += command_str
-        yaml_content['metadata']['name'] += datetime_str
-        tmp_yaml_filaname = 'yamls/tmp_%s.yaml'%datetime_str
-        dump_yaml(tmp_yaml_filaname, yaml_content)
-        print('============ YAML file dumped to %s'%tmp_yaml_filaname)
+    # command_str = args.command_str_pre
+    install_cmd = 'pip install -r /ruidata/monosdf/requirements.txt; '
+    command_mkdir = 'cd %s; '%args.deploy_tar
+    if args.resume == 'NoCkpt':
+        command_mkdir = 'mkdir %s; '%args.deploy_tar + command_mkdir
+    command_str = args.command_str_pre + install_cmd + command_mkdir + download_command + command_str
+    # import ipdb; ipdb.set_trace()
+    # command_str = command_str.replace('pip', args.pip_path)
+    # command_str = 'tensorboard --logdir . --port 6010'
+
+    tmp_yaml_filaname = 'yamls/tmp_%s.yaml'%datetime_str_current
+    # if args.resume == 'NoCkpt':
+    yaml_content['spec']['template']['spec']['containers'][0]['args'][0] += command_str
+    yaml_content['metadata']['name'] += datetime_str_current
+    dump_yaml(tmp_yaml_filaname, yaml_content)
+    print('============ YAML file dumped to %s'%tmp_yaml_filaname)
 
     create_job_from_yaml(tmp_yaml_filaname)
 
-    if args.resume == 'NoCkpt':
-        task_dir = './tasks/%s'%datetime_str
-        os.mkdir(task_dir)
-        os.system('cp %s %s/'%(tmp_yaml_filaname, task_dir))
-        text_file = open(task_dir + "/command.txt", "w")
-        n = text_file.write(command_str)
-        text_file.close()
-        print('yaml and command file saved to %s'%task_dir)
+    # if args.resume == 'NoCkpt':
+    #     task_dir = './tasks/%s'%datetime_str
+    #     os.mkdir(task_dir)
+    #     os.system('cp %s %s/'%(tmp_yaml_filaname, task_dir))
+    #     text_file = open(task_dir + "/command.txt", "w")
+    #     n = text_file.write(command_str)
+    #     text_file.close()
+    #     print('yaml and command file saved to %s'%task_dir)
 
     # os.remove(tmp_yaml_filaname)
     # print('========= REMOVED YAML file %s'%tmp_yaml_filaname)
@@ -395,7 +417,6 @@ def tb(args):
     tmp_yaml_filaname = 'tb_job.yaml'
     dump_yaml(tmp_yaml_filaname, yaml_content)
     print('============ YAML file dumped to %s'%tmp_yaml_filaname)
-
     create_job_from_yaml(tmp_yaml_filaname)
 
 def main():

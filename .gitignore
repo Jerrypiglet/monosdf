@@ -165,3 +165,4 @@ cluster_control/yamls
 cluster_control/tasks
 cluster_control/ffsend
 code/tmp.zip
+code/confs/archive

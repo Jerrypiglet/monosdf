@@ -141,7 +141,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 if_gt_data=True, 
                 if_overfit_train=False, 
                 center_crop_type='xxxx',
-                use_mask=False,
+                use_mask=True,
                 num_views=-1, 
                 split='train',
                 val_frame_num = -1, 
@@ -149,7 +149,11 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 train_frame_idx_input = []
                 ):
 
+        assert use_mask
         self.instance_dir = os.path.join('../data', data_dir, '{0}'.format(scan_id))
+        if not Path(self.instance_dir).exists():
+            self.instance_dir = os.path.join('../data', data_dir)
+            assert Path(self.instance_dir).exists(), "Data directory does not exist: %s"%self.instance_dir
 
         self.total_pixels_im = img_res[0] * img_res[1]
         self.img_res = img_res
@@ -182,16 +186,17 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         self.if_gt_data = if_gt_data
         
         if self.if_gt_data:
-            self.image_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'image'), "*.png" if not self.if_hdr else "*.exr"))
+            self.image_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'Image'), "*.png" if not self.if_hdr else "*.exr"))
         else:
-            self.image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_rgb.png" if not self.if_hdr else "image/*.exr"))
+            self.image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_rgb.png" if not self.if_hdr else "Image/*.exr"))
+        assert len(self.image_paths) > 0, "No images found in %s"%self.instance_dir
         self.image_paths.sort()
         # self.image_paths = self.image_paths[:15] # for faster debugging only
         self.filenames = [Path(_).stem.replace('_rgb', '') for _ in self.image_paths] # ['000000', '000001', '000002', ...]
 
         # check: 0-based; incremental order; no missing frames
-        assert self.filenames == ['%06d'%_ for _ in range(len(self.filenames))]
-        assert self.filenames[0] == '000000'
+        assert [_[:3] for _ in self.filenames] == ['%03d'%_ for _ in range(len(self.filenames))]
+        assert self.filenames[0] == '000_0001'
 
         if self.if_gt_data:
             # depth_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'depth'), "*.npy"))
@@ -214,7 +219,8 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 mask_paths = [str(Path(self.instance_dir) / 'mask' / ('%s.npy'%_)) for _ in self.filenames]
             else:
                 # mask_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_mask.npy"))
-                mask_paths = [str(Path(self.instance_dir) / ('%s_mask.npy'%_)) for _ in self.filenames]
+                # mask_paths = [str(Path(self.instance_dir) / ('%s_mask.npy'%_)) for _ in self.filenames]
+                mask_paths = [str(Path(self.instance_dir) / 'ImMask' / ('%s.png'%_)) for _ in self.filenames]
             assert [Path(_).exists() for _ in mask_paths]
         else:
             mask_paths = None
@@ -318,7 +324,16 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 self.mask_images.append(mask)
         else:
             for path in mask_paths:
-                mask = np.load(path)
+                if Path(path).suffix == '.npy':
+                    mask = np.load(path)
+                elif Path(path).suffix == '.png':
+                    mask = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+                    if len(mask.shape) == 3:
+                        mask = mask[:, :, 0]
+                    if mask.dtype == np.uint8:
+                        mask = mask.astype(np.float32) / 255.
+                    assert np.amax(mask) <= 1.
+                    assert np.amin(mask) >= 0.
                 self.mask_images.append(torch.from_numpy(mask.reshape(-1, 1)).float())
 
         # get global uv

@@ -11,3 +11,4 @@ timm
 h5py
 pytorch_lightning
 ipdb
+termcolor
