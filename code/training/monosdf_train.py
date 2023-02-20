@@ -60,7 +60,7 @@ class MonoSDFTrainRunner():
         self.exp_name += self.opt.append
         datetime_str = self.opt.datetime_str_input if self.opt.datetime_str_input != '' else get_datetime()
         if 'DATE' in self.exp_name:
-            self.exp_name = self.exp_name.replace('DATE', datetime_str) # e.g. '20230129-162337-K-kitchen_HDR_EST_grids_trainval_tmp'
+            self.exp_name = self.exp_name.replace('DATE', datetime_str) # e.g. '20230129-162337-K-kitchen_HDR_grids_trainval_tmp'
         else:
             if not self.opt.resume:
                 self.exp_name = datetime_str + '-' + self.exp_name
@@ -151,7 +151,7 @@ class MonoSDFTrainRunner():
             dataset_conf['data_dir'] = '/ruidata/monosdf/data/' + dataset_conf['data_dir']
 
         if not self.opt.cancel_train:
-            self.train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', **dataset_conf)
+            self.train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', dataset_name='train', **dataset_conf)
         self.if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
         self.if_hdr = self.conf.get_config('dataset').get('if_hdr', False)
 
@@ -162,12 +162,12 @@ class MonoSDFTrainRunner():
         #     self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', if_overfit_train=self.opt.if_overfit_train, **dataset_conf)
         #     shuffle_val = True
         # else:
-        self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='val', if_overfit_train=self.opt.if_overfit_train, **dataset_conf)
+        self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='val', if_overfit_train=self.opt.if_overfit_train, dataset_name='val', **dataset_conf)
         assert self.val_dataset.if_pixel == False
         shuffle_val = False
 
         dataset_conf_vis_train = copy.deepcopy(dataset_conf); dataset_conf_vis_train.pop('val_frame_num'), dataset_conf_vis_train.pop('if_pixel')
-        self.vis_train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', if_overfit_train=True, val_frame_num=12, if_pixel=False, **dataset_conf_vis_train)
+        self.vis_train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', frame_num_override=8, if_pixel=False, dataset_name='vis_train', **dataset_conf_vis_train)
         assert self.vis_train_dataset.if_pixel == False
 
         self.max_total_iters = self.conf.get_int('train.max_total_iters', default=1500000)
@@ -345,7 +345,7 @@ class MonoSDFTrainRunner():
 
                 # indices, model_input, ground_truth = next(iter(self.vis_val_dataloader))
                 for vis_split, dataloader in zip(['VAL', 'TRAIN'], [self.vis_val_dataloader, self.vis_train_dataloader]):
-                # for vis_split, dataloader in zip(['TRAIN-'], [self.vis_train_dataloader]):
+                # for vis_split, dataloader in zip(['TRAIN'], [self.vis_train_dataloader]):
                     print('== Evaluating epoch %d %svis_dataloader (%d batches)...'%(epoch, vis_split, len(dataloader)))
                     for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(dataloader)):
                         model_input["intrinsics"] = model_input["intrinsics"].cuda()

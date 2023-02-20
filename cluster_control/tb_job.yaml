@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    k8s-app: tensorboard
+  name: tb-rui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: tensorboard
+  template:
+    metadata:
+      labels:
+        k8s-app: tensorboard
+    spec:
+      containers:
+      - args:
+        - tensorboard --logdir /ruidata/monosdf/exps --port 6012
+        command:
+        - /bin/sh
+        - -c
+        image: gitlab-registry.nrp-nautilus.io/jerrypiglet/monosdf-torch13.1-tb
+        name: tensorboard
+        resources:
+          limits:
+            cpu: '4'
+            memory: 16Gi
+          requests:
+            cpu: '2'
+            memory: 8Gi
+        volumeMounts:
+        - mountPath: /ruidata
+          name: ruidatamclab
+      volumes:
+      - name: ruidatamclab
+        persistentVolumeClaim:
+          claimName: ruidatamclab

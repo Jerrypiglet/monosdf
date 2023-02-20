@@ -60,17 +60,30 @@ scene_list = [
     # 'public_re_0203-mainDiffMat_xml-scene0603_00_rescaledSDR/scan1', 
     # 'public_re_0203-mainDiffMat_xml-scene0603_00_rescaledSDR_darker/scan1', 
     # 'public_re_0203-main_xml-scene0005_00_rescaledSDR_darker/scan1', 
-    # 'livingroom/trainval', 
-    # 'livingroom0/trainval', 
     
     # 'Matterport3D/qoiz87JEwZ2_main', 
-    # 'Matterport3D/qoiz87JEwZ2', 
     # 'Matterport3D/qoiz87JEwZ2_darker', 
     # 'Matterport3D/2t7WUuJeko7_main', 
-    # 'Matterport3D/2t7WUuJeko7', 
     # 'Matterport3D/mJXqzFtmKg4_main', 
-    # 'Matterport3D/mJXqzFtmKg4', 
-    'Matterport3D//17DRP5sb8fy_single', 
+
+    # 'Matterport3D/mJXqzFtmKg4_undist', 
+    # 'Matterport3D/qoiz87JEwZ2_undist', 
+    # 'Matterport3D/2t7WUuJeko7_undist', 
+    # 'Matterport3D/17DRP5sb8fy_undist', 
+    # 'Matterport3D/2t7WUuJeko7_main_undist', 
+    # 'Matterport3D/8WUmhLawc2A_main_undist', 
+
+    # 'Matterport3D/PuKPg4mmafe_main_undist', 
+    'Matterport3D/jh4fc5c5qoQ_main_undist', 
+
+
+    # 'free-viewpoint/Salon2', 
+    
+    # 'indoor_synthetic/kitchen/train', 'indoor_synthetic/kitchen/val', 
+    # 'indoor_synthetic/bathroom/train', 'indoor_synthetic/bathroom/val', 
+    # 'indoor_synthetic/bedroom/train', 'indoor_synthetic/bedroom/val', 
+    # 'indoor_synthetic/livingroom/train', 'indoor_synthetic/livingroom/val', 
+    # 'indoor_synthetic/livingroom0/train', 'indoor_synthetic/livingroom0/val', 
     ]
 job_list = []
 for scene in scene_list:

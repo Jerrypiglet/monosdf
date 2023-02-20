@@ -46,6 +46,7 @@ def remove_plots(plots_path, N_plots, debug=False):
     for epoch in all_epochs[::-1][N_plots:]:
         ply_file_list_delete += [ply_file for ply_file in ply_file_list if int(ply_file.stem.split('epoch')[1])==epoch]
     for ply_file in ply_file_list_delete:
+        if 'epoch' not in ply_file.stem: continue
         if not debug:
             if ply_file.exists():
                 ply_file.unlink()

@@ -146,14 +146,20 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 split='train',
                 val_frame_num = -1, 
                 val_frame_idx_input = [], 
-                train_frame_idx_input = []
+                train_frame_idx_input = [], 
+                frame_num_override = -1, 
+                has_splits = False, 
+                if_sample_frames = True, 
+                dataset_name = '', 
                 ):
 
-        assert use_mask
-        self.instance_dir = os.path.join('../data', data_dir, '{0}'.format(scan_id))
-        if not Path(self.instance_dir).exists():
-            self.instance_dir = os.path.join('../data', data_dir)
-            assert Path(self.instance_dir).exists(), "Data directory does not exist: %s"%self.instance_dir
+        # self.instance_dir = os.path.join('../data', data_dir, '{0}'.format(scan_id))
+        # if not Path(self.instance_dir).exists():
+            # print('>>>>', self.instance_dir, 'split does not exist; switching to....')
+        self.instance_dir = os.path.join('../data', data_dir)
+        assert Path(self.instance_dir).exists(), "Data directory does not exist: %s"%self.instance_dir
+        if has_splits:
+            self.instance_dir = os.path.join(self.instance_dir, split)
 
         self.total_pixels_im = img_res[0] * img_res[1]
         self.img_res = img_res
@@ -173,6 +179,8 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         assert os.path.exists(self.instance_dir), "Data directory is empty: %s"%self.instance_dir
 
         self.sampling_idx = None
+        self.dataset_name = dataset_name
+        self.frame_num_override = frame_num_override
         
         def glob_data(data_dir):
             data_paths = []
@@ -230,7 +238,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         self.frame_idx_list = list(range(self.n_images))
 
         self.if_sample_frames = False
-        if not (val_frame_num == -1 and val_frame_idx_input == []):
+        if not (val_frame_num == -1 and val_frame_idx_input == []) and if_sample_frames:
             '''
             sample train/val frames according to val_frame_idx_input and val_frame_num
             '''
@@ -242,6 +250,13 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             no splits; train and val splits are the same (e.g. default scannet setting)
             '''
             pass
+        
+        if self.frame_num_override != -1:
+            import random
+            # self.frame_idx_list = self.frame_idx_list[:frame_num]
+            self.frame_idx_list = random.sample(self.frame_idx_list, self.frame_num_override)
+            # self.n_images = min(self.n_images, len(self.frame_idx_list))
+            # self.image_paths = [self.image_paths[_] for _ in self.frame_idx_list]
         
         self.cam_file = '{0}/cameras.npz'.format(self.instance_dir)
         camera_dict = np.load(self.cam_file)
@@ -344,6 +359,10 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         if self.if_pixel:
             self.convert_to_pixels()
 
+        print('>>> [SceneDatasetDN-%s-%d]'%(self.dataset_name, self.__len__()))
+        # if frame_num != -1:
+        #     import ipdb; ipdb.set_trace()
+
     def convert_to_pixels(self):
         # intrinsics = input["intrinsics"]
         # uv = input["uv"]
@@ -418,11 +437,11 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         if self.if_overfit_train:
             assert len(self.train_frame_idx_list) >= self.val_frame_num
             self.frame_idx_list = self.train_frame_idx_list[:min(self.val_frame_num, len(self.train_frame_idx_list))]
-            print('[SceneDatasetDN-%s] -> sample_frames(): OVERFIT_TRAIN: %d val from train split'%(self.split, len(self.val_frame_idx_list)))
-            print(self.frame_idx_list)
+            print('[SceneDatasetDN-%s (name: %s)] -> sample_frames(): OVERFIT_TRAIN: %d val from train split'%(self.dataset_name, self.split, len(self.val_frame_idx_list)))
+            # print(self.frame_idx_list)
         else:
-            print('[SceneDatasetDN-%s] -> sample_frames(): %d train, %d val'%(self.split, self.train_frame_num, self.val_frame_num))
-            print(self.val_frame_idx_list)
+            print('[SceneDatasetDN-%s (name %s)] -> sample_frames(): %d train, %d val'%(self.dataset_name, self.split, self.train_frame_num, self.val_frame_num))
+        print(self.frame_idx_list)
 
     def __len__(self):
         # if self.split == 'train':
@@ -432,7 +451,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         if self.if_pixel:
             return len(self.sampling_idx)
         else:
-            if self.if_sample_frames:
+            if self.if_sample_frames or self.frame_num_override != -1:
                 return len(self.frame_idx_list)
                 # if self.split == 'train':
                 #     return self.train_frame_num
@@ -472,6 +491,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         else:
             _idx = self.frame_idx_list[idx]
+            print(idx, _idx, len(self.intrinsics_all))
 
             if self.num_views >= 0:
                 image_ids = [25, 22, 28, 40, 44, 48, 0, 8, 13][:self.num_views]

@@ -113,8 +113,8 @@ python evaluation/eval.py --conf confs/kitchen_hdr_gt_mlp.conf --scan_id trainva
 python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval
 python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --expname _gamma2_L2loss
 [+] python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --expname _gamma2_L2loss_4xreg_lr1e-4_decay25
-[+] python training/exp_runner.py --conf confs/kitchen_hdr_est_grids.conf --scan_id trainval --expname _gamma2
-[++] python training/exp_runner.py --conf confs/kitchen_hdr_est_grids.conf --scan_id trainval --expname _gamma2_randomPixel_L2loss_4xreg_lr5e-4_decay25
+[+] python training/exp_runner.py --conf confs/kitchen_HDR_grids.conf --scan_id trainval --expname _gamma2
+[++] python training/exp_runner.py --conf confs/kitchen_HDR_grids.conf --scan_id trainval --expname _gamma2_randomPixel_L2loss_4xreg_lr5e-4_decay25
 [++] python training/exp_runner.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --expname _gamma2_randomPixel_L2loss_4xreg_lr5e-4_decay25
 
 python evaluation/eval.py --conf confs/kitchen_hdr_est_mlp.conf --scan_id trainval --resolution 512 --eval_rendering --evals_folder ../eval_results/kitchen_train_HDR_EST --checkpoint ../exps/kitchen_HDR_EST_train_mlp_1/2023_01_18_22_10_44/checkpoints/ModelParameters/latest.pth
@@ -159,12 +159,12 @@ python evaluation/eval.py --conf confs/openrooms_hdr_est_mlp.conf --scan_id scan
 ## EVAL
 
 ``` bash
-CUDA_VISIBLE_DEVICES=0 python training/exp_runner.py --conf confs/kitchen_hdr_est_grids.conf --scan_id trainval --expname _EVALTRAIN2023_01_23_21_23_38 --resume_folder kitchen_HDR_EST_grids_gamma2_randomPixel_fixedDepthHDR_trainval/2023_01_23_21_23_38 --is_continue --if_overfit_train --cancel_train
+CUDA_VISIBLE_DEVICES=0 python training/exp_runner.py --conf confs/kitchen_HDR_grids.conf --scan_id trainval --expname _EVALTRAIN2023_01_23_21_23_38 --resume_folder kitchen_HDR_grids_gamma2_randomPixel_fixedDepthHDR_trainval/2023_01_23_21_23_38 --is_continue --if_overfit_train --cancel_train
 ```
 
 ## cleaning up
 ### remove exps
-- add task names to `clean_up_tasks.txt` (e.g. kitchen_HDR_EST_gridstmpppppp_trainval)
+- add task names to `clean_up_tasks.txt` (e.g. kitchen_HDR_gridstmpppppp_trainval)
 - `python clean_up_tasks.py`
 ### remove nautilus tasks
 - add task names to `clean_up_tasks.txt` (e.g. zz-torch-job-gpu20230125-005454-qzhdp or 20230125-005454)

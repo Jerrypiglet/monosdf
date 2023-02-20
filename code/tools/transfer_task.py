@@ -43,7 +43,7 @@ if __name__ == '__main__':
         'checkpoints/ModelParameters/latest.pth', 
         'checkpoints/OptimizerParameters/latest.pth', 
         'checkpoints/SchedulerParameters/latest.pth', 
-        'plots/exps.ply', 
+        'plots/*.ply', 
     ]
 
     for valid_exp in valid_exp_list:
@@ -51,10 +51,13 @@ if __name__ == '__main__':
         print(valid_exp)
         for file in file_list:
             src_file = Path(valid_exp) / file
-            assert src_file.exists(), src_file
             dest_file = Path(exps_root_local) / valid_exp.stem / file
             cmd1 = 'ssh mm1 mkdir -p %s'%str(dest_file.parent)
-            cmd2 = 'scp -r %s mm1:%s'%(str(src_file), str(dest_file))
+            if '*' in str(src_file):
+                cmd2 = 'scp -r %s mm1:%s'%(str(src_file), str(dest_file.parent))
+            else:
+                assert src_file.exists(), src_file
+                cmd2 = 'scp -r %s mm1:%s'%(str(src_file), str(dest_file))
             print(cmd1)
             if not opt.debug:
                 os.system(cmd1)

@@ -23,7 +23,7 @@ def parse_args():
     
     delete_parser = subparsers.add_parser('delete', help='Delete a batch of jobs')
     delete_parser.add_argument('-p', '--pattern', type=str, help='The pattern to delete', default='')
-    delete_parser.add_argument('-f', '--file', type=str, help='file containing list of tast names to be deleted', default='clean_up_tasks.txt')
+    delete_parser.add_argument('-f', '--file', type=str, help='file containing list of tast names to be deleted', default='../clean_up_tasks.txt')
     delete_parser.add_argument('-a', '--all', action='store_true', help='If delete all (should be true)')
     delete_parser.add_argument('-n', '--namespace', type=str, help='namespace')
     delete_parser.add_argument('--debug', action='store_true', help='if debugging')
