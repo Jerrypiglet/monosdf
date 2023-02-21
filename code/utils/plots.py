@@ -99,7 +99,7 @@ avg_pool_3d = torch.nn.AvgPool3d(2, stride=2)
 upsample = torch.nn.Upsample(scale_factor=2, mode='nearest')
 
 @torch.no_grad()
-def get_surface_sliding(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2.0], return_mesh=False, level=0):
+def get_surface_sliding(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2.0], return_mesh=False, level=0, center=None, scale=None):
     cropN = 512
     # cropN = 128
     assert resolution % cropN == 0
@@ -200,6 +200,9 @@ def get_surface_sliding(path, epoch, sdf, resolution=100, grid_boundary=[-2.0, 2
                     print(verts.min(), verts.max())
                     verts = verts + np.array([x_min, y_min, z_min])
                     print(verts.min(), verts.max())
+                    
+                    if scale is not None and center is not None:
+                        verts = verts / scale + center.reshape((1, 3))
                     
                     meshcrop = trimesh.Trimesh(verts, faces, normals)
                     #meshcrop.export(f"{i}_{j}_{k}.ply")

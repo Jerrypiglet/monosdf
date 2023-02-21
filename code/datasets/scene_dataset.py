@@ -262,6 +262,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         camera_dict = np.load(self.cam_file)
         scale_mats = [camera_dict['scale_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
         world_mats = [camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
+        self.center, self.scale = camera_dict['center'], camera_dict['scale']
 
         self.intrinsics_all = []
         self.pose_all = []

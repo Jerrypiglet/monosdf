@@ -41,6 +41,7 @@ if __name__ == '__main__':
     parser.add_argument('--cancel_vis', default=False, action="store_true",
                         help='If set, cancel visualization in intermediate epochs.')
     parser.add_argument('--cancel_mesh', default=False, action="store_true", help='If set, cancel dumping mesh in val')
+    parser.add_argument('--cancel_eval', default=False, action="store_true", help='If set, cancel running over eval images in val')
     
     parser.add_argument("--local_rank", type=int, required=False, help='local rank for DistributedDataParallel', default=0)
     parser.add_argument("--datetime_str_input", type=str, required=False, help='', default='')

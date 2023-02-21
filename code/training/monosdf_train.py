@@ -338,52 +338,55 @@ class MonoSDFTrainRunner():
                                     grid_boundary=self.plot_conf.get('grid_boundary'), 
                                     level=0,  
                                     return_mesh=True,  
+                                    center=self.val_dataset.center,
+                                    scale=self.val_dataset.scale,
                                     )
                     print('-> Exported.')
                     # utils.mkdir_ifnotexists(self.plots_dir)
                     mesh.export(mesh_path, 'ply')
 
                 # indices, model_input, ground_truth = next(iter(self.vis_val_dataloader))
-                for vis_split, dataloader in zip(['VAL', 'TRAIN'], [self.vis_val_dataloader, self.vis_train_dataloader]):
-                # for vis_split, dataloader in zip(['TRAIN'], [self.vis_train_dataloader]):
-                    print('== Evaluating epoch %d %svis_dataloader (%d batches)...'%(epoch, vis_split, len(dataloader)))
-                    for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(dataloader)):
-                        model_input["intrinsics"] = model_input["intrinsics"].cuda()
-                        model_input["uv"] = model_input["uv"].cuda()
-                        model_input['pose'] = model_input['pose'].cuda()
+                if not self.opt.cancel_eval:
+                    for vis_split, dataloader in zip(['VAL', 'TRAIN'], [self.vis_val_dataloader, self.vis_train_dataloader]):
+                    # for vis_split, dataloader in zip(['TRAIN'], [self.vis_train_dataloader]):
+                        print('== Evaluating epoch %d %svis_dataloader (%d batches)...'%(epoch, vis_split, len(dataloader)))
+                        for data_index, (indices, model_input, ground_truth) in tqdm(enumerate(dataloader)):
+                            model_input["intrinsics"] = model_input["intrinsics"].cuda()
+                            model_input["uv"] = model_input["uv"].cuda()
+                            model_input['pose'] = model_input['pose'].cuda()
 
-                        split = utils.split_input(model_input, self.total_pixels_im, n_pixels=self.split_n_pixels)
-                        res = []
-                        for s in tqdm(split):
-                            out = self.model(s, indices)
-                            d = {'rgb_values': out['rgb_values'].detach(),
-                                'normal_map': out['normal_map'].detach(),
-                                'depth_values': out['depth_values'].detach(), 
-                            }
-                                # 'sdf': out['sdf'].detach()}
-                            if 'rgb_un_values' in out:
-                                d['rgb_un_values'] = out['rgb_un_values'].detach()
-                            res.append(d)
+                            split = utils.split_input(model_input, self.total_pixels_im, n_pixels=self.split_n_pixels)
+                            res = []
+                            for s in tqdm(split):
+                                out = self.model(s, indices)
+                                d = {'rgb_values': out['rgb_values'].detach(),
+                                    'normal_map': out['normal_map'].detach(),
+                                    'depth_values': out['depth_values'].detach(), 
+                                }
+                                    # 'sdf': out['sdf'].detach()}
+                                if 'rgb_un_values' in out:
+                                    d['rgb_un_values'] = out['rgb_un_values'].detach()
+                                res.append(d)
 
-                        batch_size = ground_truth['rgb'].shape[0]
-                        model_outputs = utils.merge_output(res, self.total_pixels_im, batch_size)
-                        plot_data = self.get_plot_data(model_input, model_outputs, model_input['pose'], ground_truth['rgb'], ground_truth['normal'], ground_truth['depth'], ground_truth['mask'])
+                            batch_size = ground_truth['rgb'].shape[0]
+                            model_outputs = utils.merge_output(res, self.total_pixels_im, batch_size)
+                            plot_data = self.get_plot_data(model_input, model_outputs, model_input['pose'], ground_truth['rgb'], ground_truth['normal'], ground_truth['depth'], ground_truth['mask'])
 
-                        # loss_output = self.loss(model_outputs, {k: v[0] for k, v in ground_truth.items()}, if_pixel_input=self.if_pixel_train)
+                            # loss_output = self.loss(model_outputs, {k: v[0] for k, v in ground_truth.items()}, if_pixel_input=self.if_pixel_train)
 
-                        plt.plot(implicit_network,
-                                indices,
-                                plot_data,
-                                self.plots_dir,
-                                epoch,
-                                self.img_res,
-                                if_hdr=self.if_hdr, 
-                                PREFIX=vis_split, 
-                                if_tensorboard=True, writer=self.writer, tid=self.iter_step, batch_id=data_index, if_gt_plotted=self.if_gt_plotted,
-                                **self.plot_conf
-                                )
-    
-                    self.if_gt_plotted[vis_split] = True
+                            plt.plot(implicit_network,
+                                    indices,
+                                    plot_data,
+                                    self.plots_dir,
+                                    epoch,
+                                    self.img_res,
+                                    if_hdr=self.if_hdr, 
+                                    PREFIX=vis_split, 
+                                    if_tensorboard=True, writer=self.writer, tid=self.iter_step, batch_id=data_index, if_gt_plotted=self.if_gt_plotted,
+                                    **self.plot_conf
+                                    )
+        
+                        self.if_gt_plotted[vis_split] = True
 
                 self.model.train()
 
