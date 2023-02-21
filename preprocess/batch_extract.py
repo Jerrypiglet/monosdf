@@ -17,8 +17,8 @@ from utils.utils_misc import str2bool
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument('--gpu_total', type=int, default=2, help='total num of gpus available')
-parser.add_argument('--gpu_ids', nargs='+', help='list of gpu ids available; set to -1 to use gpus: [0, ..., gpu_total-1]', required=False, default=[-1])
+parser.add_argument('--gpu_total', type=int, default=1, help='total num of gpus available')
+parser.add_argument('--gpu_ids', nargs='+', help='list of gpu ids available; set to -1 to use gpus: [0, ..., gpu_total-1]', required=False, default=[0])
 parser.add_argument('--workers_total', type=int, default=-1, help='total num of workers; must be dividable by gpu_total, i.e. workers_total/gpu_total jobs per GPU')
 parser.add_argument('--debug', action='store_true', help='not rendering; just showing missing files')
 

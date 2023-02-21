@@ -1,5 +1,4 @@
 trimesh
-pyhocon
 tqdm
 scikit-image
 matplotlib
@@ -12,3 +11,4 @@ h5py
 pytorch_lightning
 ipdb
 termcolor
+pyhocon==0.3.59

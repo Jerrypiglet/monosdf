@@ -382,11 +382,19 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         # we should use unnormalized ray direction for depth
         ray_dirs_tmp, _ = rend_util.get_camera_params(uv_all_tensor, torch.eye(4)[None].expand(_N, -1, -1), intrinsics_all_tensor) # (N, HW, 3)
         self.ray_dirs_tmp = ray_dirs_tmp[self.frame_idx_list].reshape(-1, 3) # (N'HW, 3)
+        
+        del uv_all_tensor
+        del self.uv
 
         self.ray_rgb = torch.stack(self.rgb_images)[self.frame_idx_list].view(-1, 3) # (N, HW, 3) -> (N'HW, 3)
+        del self.rgb_images
         self.ray_depth = torch.stack(self.depth_images)[self.frame_idx_list].view(-1, 1) # (N, HW, 3) -> (N'HW, 1)
+        del self.depth_images
         self.ray_mask = torch.stack(self.mask_images)[self.frame_idx_list].view(-1, 1) # (N, HW, 3) -> (N'HW, 1)
+        del self.mask_images
         self.ray_normal = torch.stack(self.normal_images)[self.frame_idx_list].view(-1, 3) # (N, HW, 3) -> (N'HW, 3)
+        del self.normal_images
+
 
         # self.ray_frame_idx = torch.arange(0, _N, dtype=torch.int32).unsqueeze(-1).expand(-1, _HW).flatten()
         self.ray_frame_idx = np.repeat(np.arange(_N, dtype=np.int32).reshape(-1, 1), _HW, 1).flatten()
