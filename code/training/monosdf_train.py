@@ -155,13 +155,6 @@ class MonoSDFTrainRunner():
         self.if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
         self.if_hdr = self.conf.get_config('dataset').get('if_hdr', False)
 
-        # val_frame_num = dataset_conf.get('val_frame_num', -1)
-        # val_frame_idx_input = dataset_conf.get('val_frame_idx_input', [])
-        # train_frame_idx_input = dataset_conf.get('train_frame_idx_input', [])
-        # if val_frame_num == -1 and train_frame_idx_input == [] and val_frame_idx_input == []:
-        #     self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', if_overfit_train=self.opt.if_overfit_train, **dataset_conf)
-        #     shuffle_val = True
-        # else:
         self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='val', if_overfit_train=self.opt.if_overfit_train, dataset_name='val', **dataset_conf)
         assert self.val_dataset.if_pixel == False
         shuffle_val = False

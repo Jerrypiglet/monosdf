@@ -74,7 +74,7 @@ scene_list = [
     # 'Matterport3D/8WUmhLawc2A_main_undist', 
 
     # 'Matterport3D/PuKPg4mmafe_main_undist', 
-    'Matterport3D/jh4fc5c5qoQ_main_undist', 
+    # 'Matterport3D/jh4fc5c5qoQ_main_undist', 
 
 
     # 'free-viewpoint/Salon2', 
@@ -84,6 +84,8 @@ scene_list = [
     # 'indoor_synthetic/bedroom/train', 'indoor_synthetic/bedroom/val', 
     # 'indoor_synthetic/livingroom/train', 'indoor_synthetic/livingroom/val', 
     # 'indoor_synthetic/livingroom0/train', 'indoor_synthetic/livingroom0/val', 
+    
+    'indoor_synthetic/kitchen_extra/train', 'indoor_synthetic/kitchen_extra/val', 
     ]
 job_list = []
 for scene in scene_list:
