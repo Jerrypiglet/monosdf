@@ -85,7 +85,8 @@ scene_list = [
     # 'indoor_synthetic/livingroom/train', 'indoor_synthetic/livingroom/val', 
     # 'indoor_synthetic/livingroom0/train', 'indoor_synthetic/livingroom0/val', 
     
-    'indoor_synthetic/kitchen_extra/train', 'indoor_synthetic/kitchen_extra/val', 
+    # 'indoor_synthetic/kitchen_extra/train', 'indoor_synthetic/kitchen_extra/val', 
+    'indoor_synthetic/kitchen_new/train', 'indoor_synthetic/kitchen_new/val', 
     ]
 job_list = []
 for scene in scene_list:

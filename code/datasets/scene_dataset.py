@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import time
+from utils.utils_misc import yellow, white_blue
 import utils.general as utils
 from utils import rend_util
 from glob import glob
@@ -157,6 +158,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         # if not Path(self.instance_dir).exists():
             # print('>>>>', self.instance_dir, 'split does not exist; switching to....')
         self.instance_dir = os.path.join('../data', data_dir)
+        self.scene_dir = self.instance_dir
         assert Path(self.instance_dir).exists(), "Data directory does not exist: %s"%self.instance_dir
         if has_splits:
             self.instance_dir = os.path.join(self.instance_dir, split)
@@ -246,10 +248,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             self.sample_frames()
             self.if_sample_frames = True
         else:
-            '''
-            no splits; train and val splits are the same (e.g. default scannet setting)
-            '''
-            pass
+            print('>>> [SceneDatasetDN-%s]'%(self.dataset_name), yellow('Not sampling frames.'))
         
         if self.frame_num_override != -1:
             import random
@@ -259,10 +258,16 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             # self.image_paths = [self.image_paths[_] for _ in self.frame_idx_list]
         
         self.cam_file = '{0}/cameras.npz'.format(self.instance_dir)
+        print(yellow('Loaded cameras.npz from %s'%(self.cam_file)))
         camera_dict = np.load(self.cam_file)
         scale_mats = [camera_dict['scale_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
         world_mats = [camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
-        self.center, self.scale = camera_dict['center'], camera_dict['scale']
+        
+        self.scale_mat_file = '{0}/scale_mat.npy'.format(self.scene_dir)
+        print(yellow('Loaded scale_mat.npy from %s'%(self.scale_mat_file)))
+        scale_mat = np.load(self.scale_mat_file, allow_pickle=True).item()
+        self.center, self.scale = scale_mat['center'], scale_mat['scale']
+        print(self.center, self.scale)
 
         self.intrinsics_all = []
         self.pose_all = []
@@ -360,7 +365,8 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         if self.if_pixel:
             self.convert_to_pixels()
 
-        print('>>> [SceneDatasetDN-%s-%d]'%(self.dataset_name, self.__len__()))
+        print(white_blue('>>> [SceneDatasetDN-%s-%d]'%(self.dataset_name, self.__len__())))
+        print(self.frame_idx_list[:15])
         # if frame_num != -1:
         #     import ipdb; ipdb.set_trace()
 
@@ -450,7 +456,6 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             # print(self.frame_idx_list)
         else:
             print('[SceneDatasetDN-%s (name %s)] -> sample_frames(): %d train, %d val'%(self.dataset_name, self.split, self.train_frame_num, self.val_frame_num))
-        print(self.frame_idx_list)
 
     def __len__(self):
         # if self.split == 'train':
