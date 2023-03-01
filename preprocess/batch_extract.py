@@ -22,6 +22,9 @@ parser.add_argument('--gpu_ids', nargs='+', help='list of gpu ids available; set
 parser.add_argument('--workers_total', type=int, default=-1, help='total num of workers; must be dividable by gpu_total, i.e. workers_total/gpu_total jobs per GPU')
 parser.add_argument('--debug', action='store_true', help='not rendering; just showing missing files')
 
+parser.add_argument('--pad_H', type=int, help="", default=-1)
+parser.add_argument('--pad_W', type=int, help="", default=-1)
+
 opt = parser.parse_args()
 
 def render(_):
@@ -29,6 +32,8 @@ def render(_):
     os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu_id)
     print(cmd, gpu_id)
     command = 'python extract_monocular_cues.py --task %s --img_path ../data/%s/Image --output_path ../data/%s --omnidata_path /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch --pretrained_models /home/ruizhu/Documents/Projects/omnidata/omnidata_tools/torch/pretrained_models/'%(cmd[0], cmd[1], cmd[1])
+    if opt.pad_H > 0 and opt.pad_W > 0:
+        command += ' --pad_H %d --pad_W %d'%(opt.pad_H, opt.pad_W)
     print(command)
     if not opt.debug:
         subprocess.call(command.split(' '))
@@ -88,11 +93,15 @@ scene_list = [
     # 'indoor_synthetic/kitchen_extra/train', 'indoor_synthetic/kitchen_extra/val', 
     # 'indoor_synthetic/kitchen_new_tmp/train', 'indoor_synthetic/kitchen_new_tmp/val', 
     
-    'real/IndoorKitchen_v1', 
+    # 'real/IndoorKitchen_v1', 
+    # 'real/IndoorKitchen_v1', 
+    'real/IndoorKitchen_v2', 
     ]
 job_list = []
 for scene in scene_list:
-    for task in ['depth', 'normal']:
+    # for task in ['depth', 'normal']:
+    for task in ['normal']:
+    # for task in ['depth']:
         job_list.append((task, scene))
 
 cmd_list = [(_cmd, gpu_ids[_idx%opt.gpu_total]) for _idx, _cmd in enumerate(job_list)]

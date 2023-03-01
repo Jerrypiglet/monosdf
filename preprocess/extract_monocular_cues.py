@@ -30,6 +30,10 @@ parser.add_argument('--img_path', dest='img_path', help="path to rgb image")
 parser.set_defaults(im_name='NONE')
 
 parser.add_argument('--output_path', dest='output_path', help="path to where output image should be stored")
+
+parser.add_argument('--pad_H', type=int, help="", default=-1)
+parser.add_argument('--pad_W', type=int, help="", default=-1)
+
 parser.set_defaults(store_name='NONE')
 
 args = parser.parse_args()
@@ -86,13 +90,17 @@ if args.task == 'normal':
 
     model.load_state_dict(state_dict)
     model.to(device)
+    transform_list = []
+    if args.pad_H > 0 and args.pad_W > 0:
+        transform_list += [transforms.Pad((0, 0, args.pad_W, args.pad_H), fill=0, padding_mode='constant')]
     if image_size is None:
-        trans_totensor = transforms.Compose([get_transform('rgb', image_size=None)])
+        transform_list += [get_transform('rgb', image_size=None)]
     else:
-        trans_totensor = transforms.Compose([transforms.Resize(image_size, interpolation=PIL.Image.BILINEAR),
+        transform_list += [transforms.Resize(image_size, interpolation=PIL.Image.BILINEAR),
                                             transforms.CenterCrop(image_size),
                                             get_transform('rgb', image_size=None), 
-                                            ])
+                                            ]
+    trans_totensor = transforms.Compose(transform_list)
 
 elif args.task == 'depth':
     pretrained_weights_path = root_dir + 'omnidata_dpt_depth_v2.ckpt'  # 'omnidata_dpt_depth_v1.ckpt'
@@ -107,15 +115,19 @@ elif args.task == 'depth':
         state_dict = checkpoint
     model.load_state_dict(state_dict)
     model.to(device)
+    transform_list = []
+    if args.pad_H > 0 and args.pad_W > 0:
+        transform_list += [transforms.Pad((0, 0, args.pad_W, args.pad_H), fill=0, padding_mode='constant')]
     if image_size is None:
-        trans_totensor = transforms.Compose([transforms.ToTensor(),
-                                    transforms.Normalize(mean=0.5, std=0.5)])
+        transform_list += [transforms.ToTensor(),
+                                    transforms.Normalize(mean=0.5, std=0.5)]
     else:
-        trans_totensor = transforms.Compose([transforms.Resize(image_size, interpolation=PIL.Image.BILINEAR),
+        transform_list += [transforms.Resize(image_size, interpolation=PIL.Image.BILINEAR),
                                             transforms.CenterCrop(image_size),
                                             transforms.ToTensor(),
                                             transforms.Normalize(mean=0.5, std=0.5), 
-                                            ])
+                                            ]
+    trans_totensor = transforms.Compose(transform_list)
 
 else:
     print("task should be one of the following: normal, depth")
@@ -125,7 +137,6 @@ if image_size is not None:
     trans_rgb = transforms.Compose([transforms.Resize(image_size, interpolation=PIL.Image.BILINEAR),
                                     transforms.CenterCrop(image_size),
                                     ])
-
 
 def standardize_depth_map(img, mask_valid=None, trunc_value=0.1):
     if mask_valid is not None:
@@ -155,10 +166,12 @@ def save_outputs(img_path, output_file_name):
         img = Image.open(img_path)
 
         img_tensor = trans_totensor(img)[:3].unsqueeze(0).to(device)
-        print(torch.amax(img_tensor), torch.amin(img_tensor))
+        print(torch.amax(img_tensor), torch.amin(img_tensor), img_tensor.shape, '++++++')
 
         rgb_path = os.path.join(args.output_path, f'{output_file_name}_rgb.png')
         if image_size is None:
+            if args.pad_H > 0 and args.pad_W > 0:
+                img = img.crop((0, 0, img.size[0]-args.pad_W, img.size[1]-args.pad_H))
             img.save(rgb_path)
         else:
             trans_rgb(img).save(rgb_path)
@@ -168,22 +181,32 @@ def save_outputs(img_path, output_file_name):
             img_tensor = img_tensor.repeat_interleave(3,1)
 
         output = model(img_tensor).clamp(min=0, max=1)
+        
+        print('--OUTPUT--', output.shape)
 
         if args.task == 'depth':
             #output = F.interpolate(output.unsqueeze(0), (512, 512), mode='bicubic').squeeze(0)
             output = output.clamp(0, 1)
-            
-            np.save(save_path.replace('.png', '.npy'), output.detach().cpu().numpy()[0])
+            output = output.detach().cpu().numpy()[0]
+            if args.pad_H > 0 and args.pad_W > 0:
+                output = output[:(output.shape[0]-args.pad_H), :(output.shape[1]-args.pad_W)]
+                print('->', output.shape)
+            np.save(save_path.replace('.png', '.npy'), output)
             
             #output = 1 - output
 #             output = standardize_depth_map(output)
-            plt.imsave(save_path, output.detach().cpu().squeeze(),cmap='viridis')
+            plt.imsave(save_path, output.squeeze(),cmap='viridis')
 
         else:
-            #import pdb; pdb.set_trace()
-            np.save(save_path.replace('.png', '.npy'), output.detach().cpu().numpy()[0])
-            trans_topil(output[0]).save(save_path)
-            print('--normal-->', torch.amax(output[0]), torch.amin(output[0]))
+            output = output.detach().cpu().numpy()[0]
+            if args.pad_H > 0 and args.pad_W > 0:
+                # print('-->', output.shape)
+                output = output[:, :(output.shape[1]-args.pad_H), :(output.shape[2]-args.pad_W)]
+                print('-->', output.shape, output.dtype, np.amax(output), np.amin(output))
+            np.save(save_path.replace('.png', '.npy'), output)
+            output = torch.from_numpy(output)
+            trans_topil(output).save(save_path)
+            print('--normal-->', torch.amax(output), torch.amin(output))
             
         print(f'Writing output {save_path} ...')
 
