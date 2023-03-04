@@ -95,12 +95,16 @@ scene_list = [
     
     # 'real/IndoorKitchen_v1', 
     # 'real/IndoorKitchen_v1', 
-    'real/IndoorKitchen_v2', 
+    # 'real/IndoorKitchen_v2', 
+    # 'real/IndoorKitchen_v2_3', 
+    'real/IndoorKitchen_v2_3_re', 
+    
+    # 'fvp/asianRoom', 
     ]
 job_list = []
 for scene in scene_list:
-    # for task in ['depth', 'normal']:
-    for task in ['normal']:
+    for task in ['depth', 'normal']:
+    # for task in ['normal']:
     # for task in ['depth']:
         job_list.append((task, scene))
 
