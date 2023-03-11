@@ -97,9 +97,43 @@ scene_list = [
     # 'real/IndoorKitchen_v1', 
     # 'real/IndoorKitchen_v2', 
     # 'real/IndoorKitchen_v2_3', 
-    'real/IndoorKitchen_v2_3_re', 
+    # 'real/IndoorKitchen_v2_3_re', 
+    # 'real/IndoorKitchen_v2_3_Dark', 
+    # 'real/ConferenceRoom', 
     
-    # 'fvp/asianRoom', 
+    # 'real/DormRoom_v1', 
+    
+    # 'real/IndoorKitchen_v2_final_supergloo', 
+    # 'real/IndoorKitchenV3_final_supergloo_FIXED', 
+    # 'real/IndoorKitchenV3_final_supergloo_RE', 
+    # 'real/DormRoom_v2_final'
+    # 'real/DormRoom_v2_final_supergloo'
+    # 'real/DormRoom_v2_final_supergloo_FIXED'
+    # 'real/DormRoom_v2_final_supergloo_FIXED2'
+    # 'real/IndoorKitchenV3_final', 
+    # 'real/IndoorKitchenV3_final_supergloo', 
+    # 'real/ConferenceRoomV2_final', 
+    # 'real/ConferenceRoomV2_final_supergloo', 
+    # 'real/ConferenceRoomV2_final_supergloo_DARKER', 
+    # 'real/IndoorKitchenV4'
+    # 'real/IndoorKitchenV4_FIXED', 
+    # 'real/IndoorKitchenV4_COLMAP', 
+    # 'real/ConferenceRoomV2_final_MORE', 
+    
+    # --- after ddl
+    # 'real/IndoorKitchenV4_2'
+    # 'real/DormRoom_v2_1_betterK_supergloo_FIXED'
+    # 'real/ClassRoom', 
+    # 'real/ClassRoom_supergloo', 
+    # 'real/ClassRoom_aligned', 
+    # 'real/ConferenceRoomV2_betterK', 
+    # 'real/ConferenceRoomV2_betterK_supergloo', 
+    
+    # 'real/ClassRoom_aligned', 
+    # 'real/ClassRoom_supergloo_aligned', 
+    # 'real/ConferenceRoomV2_final_supergloo_aligned', 
+    # 'real/IndoorKitchenV4_2_aligned', 
+    'real/DormRoom_v2_1_betterK_supergloo_aligned', 
     ]
 job_list = []
 for scene in scene_list:

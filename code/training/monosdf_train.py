@@ -312,7 +312,9 @@ class MonoSDFTrainRunner():
             VAL
             '''
 
-            if self.GPU_INDEX == 0 and self.do_vis and epoch % self.plot_freq == 0:
+            if_plot = (epoch % self.plot_freq == 0) or (epoch < self.plot_freq and epoch % (self.plot_freq//3) == 0)
+            
+            if self.GPU_INDEX == 0 and self.do_vis and if_plot:
                 self.model.eval()
                 # self.train_dataset.change_sampling_idx(-1)
                 implicit_network = self.model.module.implicit_network if self.if_distributed else self.model.implicit_network
@@ -321,7 +323,7 @@ class MonoSDFTrainRunner():
                 if not self.opt.cancel_mesh:
                     # mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
                     mesh_path = '{0}/{1}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-2])
-                    resolution = 1024 if self.opt.cancel_train else self.plot_conf['resolution']
+                    resolution = 512 if self.opt.cancel_train else self.plot_conf['resolution']
                     print('- Exporting mesh to %s... (res %d)'%(mesh_path, resolution))
                     with torch.no_grad():
                         mesh = get_surface_sliding(path=self.plots_dir, 
@@ -329,7 +331,7 @@ class MonoSDFTrainRunner():
                                     sdf=lambda x: implicit_network(x)['sdf'].squeeze(1), 
                                     resolution=resolution, 
                                     grid_boundary=self.plot_conf.get('grid_boundary'), 
-                                    level=0,  
+                                    level=0.001 if self.opt.cancel_train else 0.,  
                                     return_mesh=True,  
                                     center=self.val_dataset.center,
                                     scale=self.val_dataset.scale,

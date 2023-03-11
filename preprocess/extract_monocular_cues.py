@@ -218,5 +218,5 @@ elif img_path.is_dir():
     for f in tqdm(glob.glob(args.img_path+'/*.png')):
         save_outputs(f, os.path.splitext(os.path.basename(f))[0])
 else:
-    print("invalid file path!")
+    print("invalid file path!"+str(img_path))
     sys.exit()
