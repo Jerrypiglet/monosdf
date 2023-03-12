@@ -133,7 +133,14 @@ scene_list = [
     # 'real/ClassRoom_supergloo_aligned', 
     # 'real/ConferenceRoomV2_final_supergloo_aligned', 
     # 'real/IndoorKitchenV4_2_aligned', 
-    'real/DormRoom_v2_1_betterK_supergloo_aligned', 
+    # 'real/DormRoom_v2_1_betterK_supergloo_aligned', 
+    # 'real/Bedroom_supergloo', 
+    # 'real/Bedroom', 
+    # 'real/Bedroom_supergloo_aligned', 
+    # 'real/Bedroom_aligned', 
+    # 'real/Bedroom_aligned_DARKER', 
+    # 'real/Bedroom_supergloo_aligned_DARKER', 
+    'real/Bedroom_MORE_DARKER', 
     ]
 job_list = []
 for scene in scene_list:
