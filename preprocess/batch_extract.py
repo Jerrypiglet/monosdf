@@ -140,7 +140,7 @@ scene_list = [
     # 'real/Bedroom_aligned', 
     # 'real/Bedroom_aligned_DARKER', 
     # 'real/Bedroom_supergloo_aligned_DARKER', 
-    'real/Bedroom_MORE_DARKER', 
+    'real/Bedroom_MORE_supergloo_DARKER', 
     ]
 job_list = []
 for scene in scene_list:
