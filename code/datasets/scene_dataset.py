@@ -199,6 +199,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             self.image_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'Image'), "*.png" if not self.if_hdr else "*.exr"))
         else:
             self.image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_rgb.png" if not self.if_hdr else "Image/*.exr"))
+            # self.image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "Image/*.png" if not self.if_hdr else "Image/*.exr"))
         assert len(self.image_paths) > 0, "No images found in %s"%self.instance_dir
         self.image_paths.sort()
         # self.image_paths = self.image_paths[:15] # for faster debugging only
