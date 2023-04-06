@@ -2,7 +2,7 @@ import os
 import torch
 import torch.nn.functional as F
 import numpy as np
-import time
+from tqdm import tqdm
 from utils.utils_misc import yellow, white_blue
 import utils.general as utils
 from utils import rend_util
@@ -198,8 +198,8 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         if self.if_gt_data:
             self.image_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'Image'), "*.png" if not self.if_hdr else "*.exr"))
         else:
-            self.image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_rgb.png" if not self.if_hdr else "Image/*.exr"))
-            # self.image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "Image/*.png" if not self.if_hdr else "Image/*.exr"))
+            # self.image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_rgb.png" if not self.if_hdr else "Image/*.exr"))
+            self.image_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "Image/*.png" if not self.if_hdr else "Image/*.exr"))
         assert len(self.image_paths) > 0, "No images found in %s"%self.instance_dir
         self.image_paths.sort()
         # self.image_paths = self.image_paths[:15] # for faster debugging only
@@ -307,7 +307,8 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             self.pose_all.append(torch.from_numpy(pose).float())
 
         self.rgb_images = []
-        for path in self.image_paths:
+        print('Loading %d images...'%len(self.image_paths))
+        for path in tqdm(self.image_paths):
             if self.if_hdr:
                 rgb = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
                 assert rgb is not None
@@ -322,7 +323,9 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         self.depth_images = []
         self.normal_images = []
 
-        for dpath, npath in zip(depth_paths, normal_paths):
+        assert len(depth_paths) == len(normal_paths)
+        print('Loading %d depth/normal...'%len(depth_paths))
+        for dpath, npath in tqdm(zip(depth_paths, normal_paths)):
             depth = np.load(dpath)
             depth[np.isnan(depth)] = 1./1000.
             depth[np.isinf(depth)] = 1./1000.
@@ -372,6 +375,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         #     import ipdb; ipdb.set_trace()
 
     def convert_to_pixels(self):
+        print('Converting to pixels...')
         # intrinsics = input["intrinsics"]
         # uv = input["uv"]
         # pose = input["pose"]
@@ -411,6 +415,8 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         self.total_pixels = self.ray_rgb.shape[0]
         self.sampling_idx = list(range(self.total_pixels))
 
+        print('Converting to pixels... DONE.')
+
     def sample_frames(self):
         '''
         frame_idx in [0, ..., total_frame_num-1]
@@ -444,6 +450,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             frame_list = list(set(frame_list) - set(val_frame_idx_list))
         self.train_frame_idx_list += frame_list
 
+        print(len(self.train_frame_idx_list), len(self.val_frame_idx_list), self.n_images)
         assert len(self.train_frame_idx_list) + len(self.val_frame_idx_list) == self.n_images
         self.train_frame_num = len(self.train_frame_idx_list)
         self.val_frame_num = len(self.val_frame_idx_list)

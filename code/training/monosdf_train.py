@@ -323,7 +323,7 @@ class MonoSDFTrainRunner():
                 if not self.opt.cancel_mesh:
                     # mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
                     mesh_path = '{0}/{1}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-2])
-                    resolution = 512 if self.opt.cancel_train else self.plot_conf['resolution']
+                    resolution = 1024 if self.opt.cancel_train else self.plot_conf['resolution']
                     print('- Exporting mesh to %s... (res %d)'%(mesh_path, resolution))
                     with torch.no_grad():
                         mesh = get_surface_sliding(path=self.plots_dir, 
