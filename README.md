@@ -29,7 +29,7 @@ We demonstrate that state-of-the-art depth and normal cues extracted from monocu
 </p>
 <br>
 
-# Rui
+# [Obsolete]
 
 pytorch=1.8.0
 

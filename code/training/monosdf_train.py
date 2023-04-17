@@ -154,16 +154,19 @@ class MonoSDFTrainRunner():
             self.train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', dataset_name='train', **dataset_conf)
         self.if_pixel_train = self.conf.get_config('dataset').get('if_pixel', False)
         self.if_hdr = self.conf.get_config('dataset').get('if_hdr', False)
+        self.if_gt_data = self.conf.get_config('dataset').get('if_gt_data', False)
 
-        self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='val', if_overfit_train=self.opt.if_overfit_train, dataset_name='val', **dataset_conf)
-        assert self.val_dataset.if_pixel == False
-        shuffle_val = False
+        if not self.opt.cancel_eval or not self.opt.cancel_vis:
+            self.val_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='val', if_overfit_train=self.opt.if_overfit_train, dataset_name='val', **dataset_conf)
+            assert self.val_dataset.if_pixel == False
+            shuffle_val = False
 
-        dataset_conf_vis_train = copy.deepcopy(dataset_conf); dataset_conf_vis_train.pop('val_frame_num'), dataset_conf_vis_train.pop('if_pixel')
-        self.vis_train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', frame_num_override=8, if_pixel=False, dataset_name='vis_train', **dataset_conf_vis_train)
-        assert self.vis_train_dataset.if_pixel == False
+        if not self.opt.cancel_vis:
+            dataset_conf_vis_train = copy.deepcopy(dataset_conf); dataset_conf_vis_train.pop('val_frame_num'), dataset_conf_vis_train.pop('if_pixel')
+            self.vis_train_dataset = utils.get_class(self.conf.get_string('train.dataset_class'))(split='train', if_pixel=False, if_overfit_train=True, dataset_name='vis_train', **dataset_conf_vis_train)
+            assert self.vis_train_dataset.if_pixel == False
 
-        self.max_total_iters = self.conf.get_int('train.max_total_iters', default=1500000)
+        self.max_total_iters = self.conf.get_int('train.max_total_iters', default=150000)
         if not self.opt.cancel_train:
             self.ds_len = len(self.train_dataset) if not self.if_pixel_train else self.train_dataset.n_images
             print('Finish loading data. Dataset size: {0}'.format(self.ds_len))
@@ -179,18 +182,18 @@ class MonoSDFTrainRunner():
                                                                 shuffle=True if not self.if_pixel_train else False,
                                                                 collate_fn=self.train_dataset.collate_fn,
                                                                 num_workers=1 if self.if_cluster else 8)
+        if not self.opt.cancel_vis:
+            self.vis_val_dataloader = torch.utils.data.DataLoader(self.val_dataset,
+                                                            batch_size=self.conf.get_int('plot.plot_nimgs'),
+                                                            shuffle=shuffle_val,
+                                                            collate_fn=self.val_dataset.collate_fn
+                                                            )
 
-        self.vis_val_dataloader = torch.utils.data.DataLoader(self.val_dataset,
-                                                           batch_size=self.conf.get_int('plot.plot_nimgs'),
-                                                           shuffle=shuffle_val,
-                                                           collate_fn=self.val_dataset.collate_fn
-                                                           )
-
-        self.vis_train_dataloader = torch.utils.data.DataLoader(self.vis_train_dataset,
-                                                           batch_size=self.conf.get_int('plot.plot_nimgs'),
-                                                           shuffle=shuffle_val,
-                                                           collate_fn=self.val_dataset.collate_fn
-                                                           )
+            self.vis_train_dataloader = torch.utils.data.DataLoader(self.vis_train_dataset,
+                                                            batch_size=self.conf.get_int('plot.plot_nimgs'),
+                                                            shuffle=shuffle_val,
+                                                            collate_fn=self.val_dataset.collate_fn
+                                                            )
 
         conf_model = self.conf.get_config('model')
         self.model = utils.get_class(self.conf.get_string('train.model_class'))(conf=conf_model, if_hdr=self.if_hdr)
@@ -198,7 +201,7 @@ class MonoSDFTrainRunner():
         if torch.cuda.is_available():
             self.model.cuda()
 
-        self.loss = utils.get_class(self.conf.get_string('train.loss_class'))(**self.conf.get_config('loss'))
+        self.loss = utils.get_class(self.conf.get_string('train.loss_class'))(if_scale_invariant_depth=not self.if_gt_data, **self.conf.get_config('loss'))
         
         if not self.opt.cancel_train:
             self.lr = self.conf.get_float('train.learning_rate')
@@ -323,7 +326,7 @@ class MonoSDFTrainRunner():
                 if not self.opt.cancel_mesh:
                     # mesh_path = '{0}/{1}_epoch{2}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-3], epoch)
                     mesh_path = '{0}/{1}.ply'.format(self.plots_dir, self.plots_dir.split('/')[-2])
-                    resolution = 512 if self.opt.cancel_train else self.plot_conf['resolution']
+                    resolution = 1024 if self.opt.cancel_train else self.plot_conf['resolution']
                     print('- Exporting mesh to %s... (res %d)'%(mesh_path, resolution))
                     with torch.no_grad():
                         mesh = get_surface_sliding(path=self.plots_dir, 
@@ -440,6 +443,7 @@ class MonoSDFTrainRunner():
                 
                 CUDA_VISIBLE_DEVICES = os.environ['CUDA_VISIBLE_DEVICES'] if 'CUDA_VISIBLE_DEVICES' in os.environ else -1, 
                 if self.GPU_INDEX == 0:
+                    print(loss_output['depth_loss'])
                     print(
                         '{0} [{1}] ({2}/{3}): loss = {4}, rgb_loss = {5}, eikonal_loss = {6}, psnr = {7}, bete={8}, alpha={9}; [{10}]'
                             .format(self.exp_name, 
@@ -456,7 +460,7 @@ class MonoSDFTrainRunner():
                         self.writer.add_scalar('Loss/color_loss', loss_output['rgb_loss'].item(), self.iter_step)
                         self.writer.add_scalar('Loss/eikonal_loss', loss_output['eikonal_loss'].item(), self.iter_step)
                         self.writer.add_scalar('Loss/smooth_loss', loss_output['smooth_loss'].item(), self.iter_step)
-                        self.writer.add_scalar('Loss/depth_loss', loss_output['depth_loss'].item(), self.iter_step)
+                        self.writer.add_scalar('Loss/depth_loss', loss_output['depth_loss'].item() if type(loss_output['depth_loss']) is torch.tensor else loss_output['depth_loss'], self.iter_step)
                         self.writer.add_scalar('Loss/normal_l1_loss', loss_output['normal_l1'].item(), self.iter_step)
                         self.writer.add_scalar('Loss/normal_cos_loss', loss_output['normal_cos'].item(), self.iter_step)
                         

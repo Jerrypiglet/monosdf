@@ -143,21 +143,25 @@ class GradientLoss(nn.Module):
 
 
 class ScaleAndShiftInvariantLoss(nn.Module):
-    def __init__(self, alpha=0.5, scales=4, reduction='batch-based'):
+    def __init__(self, alpha=0.5, scales=4, reduction='batch-based', if_scale_invariant_depth=True):
         super().__init__()
 
         self.__data_loss = MSELoss(reduction=reduction)
         self.__regularization_loss = GradientLoss(scales=scales, reduction=reduction)
         self.__alpha = alpha
+        self.if_scale_invariant_depth = if_scale_invariant_depth
 
         self.__prediction_ssi = None
 
     def forward(self, prediction, target, mask, if_pixel_input=False):
+        if self.if_scale_invariant_depth:
+            scale, shift = compute_scale_and_shift_1D(prediction, target, mask)
+            # [TODO] make target simply (N,) instead of (1, N)
+            self.__prediction_ssi = scale.view(1, -1) * prediction + shift.view(1, -1)
+        else:
+            self.__prediction_ssi = prediction
 
-        scale, shift = compute_scale_and_shift_1D(prediction, target, mask)
-        # [TODO] make target simply (N,) instead of (1, N)
-        self.__prediction_ssi = scale.view(1, -1) * prediction + shift.view(1, -1)
-
+        print(mask.shape, torch.sum(mask))
         total = self.__data_loss(self.__prediction_ssi, target, mask, if_pixel_input=if_pixel_input)
         # print(target.shape, mask.shape, torch.sum(mask))
         if self.__alpha > 0 and not if_pixel_input: # 'gradient loss not supported for pixel batch mode'
@@ -182,6 +186,7 @@ class MonoSDFLoss(nn.Module):
                  normal_l1_weight = 0.05,
                  normal_cos_weight = 0.05,
                  if_gamma_loss = False, 
+                 if_scale_invariant_depth = True, 
                  end_step = -1):
         super().__init__()
         self.eikonal_weight = eikonal_weight
@@ -191,9 +196,10 @@ class MonoSDFLoss(nn.Module):
         self.normal_cos_weight = normal_cos_weight
         self.rgb_loss = utils.get_class(rgb_loss)(reduction='mean')
 
+        self.if_scale_invariant_depth = if_scale_invariant_depth
         self.if_gamma_loss = if_gamma_loss
         
-        self.depth_loss = ScaleAndShiftInvariantLoss(alpha=depth_alpha, scales=1)
+        self.depth_loss = ScaleAndShiftInvariantLoss(alpha=depth_alpha, scales=1, if_scale_invariant_depth=if_scale_invariant_depth)
         
         print(f"using weight for loss RGB_1.0 EK_{self.eikonal_weight} SM_{self.smooth_weight} Depth_{self.depth_weight} NormalL1_{self.normal_l1_weight} NormalCos_{self.normal_cos_weight}")
         
@@ -227,11 +233,14 @@ class MonoSDFLoss(nn.Module):
         smooth_loss =  torch.norm(normals_1 - normals_2, dim=-1).mean()
         return smooth_loss
     
-    def get_depth_loss(self, depth_pred, depth_gt, mask, if_pixel_input=False):
+    def get_depth_loss(self, depth_pred, depth_gt, mask, if_pixel_input=False, if_scale_invariant_depth=True):
         # [Fixed by Rui] remove hard-coded scaling for depth; depth_pred (1024, 1), depth_gt (1, 1024, 1)
         # return self.depth_loss(depth_pred.reshape(1, 32, 32), (depth_gt * 50 + 0.5).reshape(1, 32, 32), mask.reshape(1, 32, 32))
         # import ipdb; ipdb.set_trace()
-        return self.depth_loss(depth_pred.reshape(1, -1), (depth_gt * 50 + 0.5).reshape(1, -1), mask.reshape(1, -1), if_pixel_input=if_pixel_input)
+        if if_scale_invariant_depth:
+            return self.depth_loss(depth_pred.reshape(1, -1), (depth_gt * 50 + 0.5).reshape(1, -1), mask.reshape(1, -1), if_pixel_input=if_pixel_input)
+        else:
+            return self.depth_loss(depth_pred.reshape(1, -1), depth_gt.reshape(1, -1), mask.reshape(1, -1), if_pixel_input=if_pixel_input)
         
     def get_normal_loss(self, normal_pred, normal_gt):
         normal_gt = torch.nn.functional.normalize(normal_gt, p=2, dim=-1)
@@ -266,9 +275,9 @@ class MonoSDFLoss(nn.Module):
         # combine with GT
         mask = (ground_truth['mask'] > 0.5).cuda() & mask
 
-        depth_loss = self.get_depth_loss(depth_pred, depth_gt, mask, if_pixel_input=if_pixel_input)
-        if isinstance(depth_loss, float):
-            depth_loss = torch.tensor(0.0).cuda().float()    
+        depth_loss = self.get_depth_loss(depth_pred, depth_gt, mask, if_pixel_input=if_pixel_input, if_scale_invariant_depth=self.if_scale_invariant_depth)
+        # if isinstance(depth_loss, float):
+        #     depth_loss = torch.tensor(0.0).cuda().float()    
         
         normal_l1, normal_cos = self.get_normal_loss(normal_pred * mask, normal_gt)
         

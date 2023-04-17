@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import time
-from utils.utils_misc import yellow, white_blue
+from utils.utils_misc import yellow, white_blue, green, green_text, yellow_text
 import utils.general as utils
 from utils import rend_util
 from glob import glob
@@ -13,130 +13,12 @@ import cv2
 import random
 from pathlib import Path
 
-class SceneDataset_(torch.utils.data.Dataset):
-
-    def __init__(self,
-                 data_dir,
-                 img_res,
-                 scan_id: str='scan0',
-                 num_views=-1,  
-                 ):
-
-        self.instance_dir = os.path.join('../data', data_dir, '{0}'.format(scan_id))
-
-        self.total_pixels_im = img_res[0] * img_res[1]
-        self.img_res = img_res
-
-        assert os.path.exists(self.instance_dir), "Data directory is empty"
-        
-        self.num_views = num_views
-        assert num_views in [-1, 3, 6, 9]
-        
-        self.sampling_idx = None
-        # self.sampling_ratio = 1.
-
-        image_dir = '{0}/image'.format(self.instance_dir)
-        self.image_paths = sorted(utils.glob_imgs(image_dir))
-        self.n_images = len(self.image_paths)
-
-        self.cam_file = '{0}/cameras.npz'.format(self.instance_dir)
-        camera_dict = np.load(self.cam_file)
-        scale_mats = [camera_dict['scale_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
-        world_mats = [camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
-
-        self.intrinsics_all = []
-        self.pose_all = []
-        for scale_mat, world_mat in zip(scale_mats, world_mats):
-            P = world_mat @ scale_mat
-            P = P[:3, :4]
-            intrinsics, pose = rend_util.load_K_Rt_from_P(None, P)
-            self.intrinsics_all.append(torch.from_numpy(intrinsics).float())
-            self.pose_all.append(torch.from_numpy(pose).float())
-
-        self.rgb_images = []
-        for path in self.image_paths:
-            rgb = rend_util.load_rgb(path)
-            rgb = rgb.reshape(3, -1).transpose(1, 0)
-            self.rgb_images.append(torch.from_numpy(rgb).float())
-            
-        # used a fake depth image and normal image
-        self.depth_images = []
-        self.normal_images = []
-
-        for path in self.image_paths:
-            depth = np.ones_like(rgb[:, :1])
-            self.depth_images.append(torch.from_numpy(depth).float())
-            normal = np.ones_like(rgb)
-            self.normal_images.append(torch.from_numpy(normal).float())
-            
-    def __len__(self):
-        return self.n_images
-
-    def __getitem__(self, idx):
-        if self.num_views >= 0:
-            image_ids = [25, 22, 28, 40, 44, 48, 0, 8, 13][:self.num_views]
-            idx = image_ids[random.randint(0, self.num_views - 1)]
-            
-        uv = np.mgrid[0:self.img_res[0], 0:self.img_res[1]].astype(np.int32)
-        uv = torch.from_numpy(np.flip(uv, axis=0).copy()).float()
-        uv = uv.reshape(2, -1).transpose(1, 0)
-
-        sample = {
-            "uv": uv,
-            "intrinsics": self.intrinsics_all[idx],
-            "pose": self.pose_all[idx]
-        }
-
-        ground_truth = {
-            "rgb": self.rgb_images[idx],
-            "depth": self.depth_images[idx],
-            "normal": self.normal_images[idx],
-        }
-        
-        if self.sampling_idx is not None:
-            ground_truth["rgb"] = self.rgb_images[idx][self.sampling_idx, :]
-            ground_truth["depth"] = self.depth_images[idx][self.sampling_idx, :]
-            ground_truth["mask"] = torch.ones_like(self.depth_images[idx][self.sampling_idx, :])
-            ground_truth["normal"] = self.normal_images[idx][self.sampling_idx, :]
-            
-            sample["uv"] = uv[self.sampling_idx, :]
-
-        return idx, sample, ground_truth
-
-    def collate_fn(self, batch_list):
-        # get list of dictionaries and returns input, ground_true as dictionary for all batch instances
-        batch_list = zip(*batch_list)
-
-        all_parsed = []
-        for entry in batch_list:
-            if type(entry[0]) is dict:
-                # make them all into a new dict
-                ret = {}
-                for k in entry[0].keys():
-                    ret[k] = torch.stack([obj[k] for obj in entry])
-                all_parsed.append(ret)
-            else:
-                all_parsed.append(torch.LongTensor(entry))
-
-        return tuple(all_parsed)
-
-    def change_sampling_idx(self, sampling_size):
-        if sampling_size == -1:
-            self.sampling_idx = None
-        else:
-            self.sampling_idx = torch.randperm(self.total_pixels_im)[:sampling_size]
-
-    def get_scale_mat(self):
-        return np.load(self.cam_file)['scale_mat_0']
-
-
 # Dataset with monocular depth and normal
 class SceneDatasetDN(torch.utils.data.Dataset):
 
     def __init__(self,
                 data_dir,
                 img_res,
-                scan_id: str='scan0',
                 if_hdr=False, # if load HDR images (e.g. OpenRooms, kitchen)
                 if_pixel=False, # if return batch of random pixels
                 if_gt_data=True, 
@@ -146,8 +28,8 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 num_views=-1, 
                 split='train',
                 val_frame_num = -1, 
-                val_frame_idx_input = [], 
                 train_frame_idx_input = [], 
+                val_frame_idx_input = [], 
                 frame_num_override = -1, 
                 has_splits = False, 
                 if_sample_frames = True, 
@@ -157,6 +39,9 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         # self.instance_dir = os.path.join('../data', data_dir, '{0}'.format(scan_id))
         # if not Path(self.instance_dir).exists():
             # print('>>>>', self.instance_dir, 'split does not exist; switching to....')
+        print(green('>>>>>>>>>> [SceneDatasetDN-%s] split: %s'%(dataset_name, split)))
+        print(train_frame_idx_input, val_frame_idx_input, val_frame_num, if_sample_frames)
+        
         self.instance_dir = os.path.join('../data', data_dir)
         self.scene_dir = self.instance_dir
         assert Path(self.instance_dir).exists(), "Data directory does not exist: %s"%self.instance_dir
@@ -190,9 +75,6 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             data_paths = sorted(data_paths)
             return data_paths
 
-        # self.if_gt_data = False
-        # self.if_gt_data = True
-
         self.if_gt_data = if_gt_data
         
         if self.if_gt_data:
@@ -225,13 +107,13 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         
         # mask is only used in the replica dataset as some monocular depth predictions have very large error and we ignore it
         if use_mask:
-            if self.if_gt_data:
-                # mask_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'mask'), "*.npy"))
-                mask_paths = [str(Path(self.instance_dir) / 'mask' / ('%s.npy'%_)) for _ in self.filenames]
-            else:
-                # mask_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_mask.npy"))
-                # mask_paths = [str(Path(self.instance_dir) / ('%s_mask.npy'%_)) for _ in self.filenames]
-                mask_paths = [str(Path(self.instance_dir) / 'ImMask' / ('%s.png'%_)) for _ in self.filenames]
+            # if self.if_gt_data:
+            #     # mask_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'mask'), "*.npy"))
+            #     mask_paths = [str(Path(self.instance_dir) / 'mask' / ('%s.npy'%_)) for _ in self.filenames]
+            # else:
+            #     # mask_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_mask.npy"))
+            #     # mask_paths = [str(Path(self.instance_dir) / ('%s_mask.npy'%_)) for _ in self.filenames]
+            mask_paths = [str(Path(self.instance_dir) / 'ImMask' / ('%s.png'%_)) for _ in self.filenames]
             assert [Path(_).exists() for _ in mask_paths]
         else:
             mask_paths = None
@@ -242,6 +124,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         self.if_sample_frames = False
         if not (val_frame_num == -1 and val_frame_idx_input == []) and if_sample_frames:
+        # if if_sample_frames:
             '''
             sample train/val frames according to val_frame_idx_input and val_frame_num
             '''
@@ -251,24 +134,24 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         else:
             print('>>> [SceneDatasetDN-%s]'%(self.dataset_name), yellow('Not sampling frames.'))
         
-        if self.frame_num_override != -1:
-            import random
-            # self.frame_idx_list = self.frame_idx_list[:frame_num]
-            self.frame_idx_list = random.sample(self.frame_idx_list, self.frame_num_override)
-            # self.n_images = min(self.n_images, len(self.frame_idx_list))
-            # self.image_paths = [self.image_paths[_] for _ in self.frame_idx_list]
+        # if self.frame_num_override != -1:
+        #     import random
+        #     # self.frame_idx_list = self.frame_idx_list[:frame_num]
+        #     self.frame_idx_list = random.sample(self.frame_idx_list, self.frame_num_override)
+        #     # self.n_images = min(self.n_images, len(self.frame_idx_list))
+        #     # self.image_paths = [self.image_paths[_] for _ in self.frame_idx_list]
         
         self.cam_file = '{0}/cameras.npz'.format(self.instance_dir)
-        print(yellow('Loaded cameras.npz from %s'%(self.cam_file)))
+        print(yellow_text('Loaded cameras.npz from %s'%(self.cam_file)))
         camera_dict = np.load(self.cam_file)
         scale_mats = [camera_dict['scale_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
         world_mats = [camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
         
         self.scale_mat_file = '{0}/scale_mat.npy'.format(self.scene_dir)
-        print(yellow('Loaded scale_mat.npy from %s'%(self.scale_mat_file)))
+        print(yellow_text('Loaded scale_mat.npy from %s'%(self.scale_mat_file)))
         scale_mat = np.load(self.scale_mat_file, allow_pickle=True).item()
         self.center, self.scale = scale_mat['center'], scale_mat['scale']
-        print(self.center, self.scale)
+        print('center, scale', self.center, self.scale)
 
         self.intrinsics_all = []
         self.pose_all = []
@@ -324,6 +207,9 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         for dpath, npath in zip(depth_paths, normal_paths):
             depth = np.load(dpath)
+            if self.if_gt_data:
+                depth = depth * self.scale # manually normalize GT depth (which is un-normalized)
+                
             depth[np.isnan(depth)] = 1./1000.
             depth[np.isinf(depth)] = 1./1000.
             assert not np.any(np.isnan(depth))
@@ -333,7 +219,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             normal = np.load(npath)
             normal = normal.reshape(3, -1).transpose(1, 0)
             # important as the output of omnidata is normalized
-            normal = normal * 2. - 1.
+            normal = normal * 2. - 1. # [0, 1] -> [-1, 1]; OpenCV coords
             assert not np.any(np.isnan(normal))
             assert not np.any(np.isinf(normal))
             self.normal_images.append(torch.from_numpy(normal).float())
@@ -357,6 +243,16 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                     assert np.amax(mask) <= 1.
                     assert np.amin(mask) >= 0.
                 self.mask_images.append(torch.from_numpy(mask.reshape(-1, 1)).float())
+        
+        # checking loaded depth/normals...
+        for idx, (mask, normal, depth) in enumerate(zip(self.mask_images, self.normal_images, self.depth_images)):
+            # print(mask.shape, torch.sum(mask)/mask.shape[0])
+            assert (mask==1.).shape[0] > 0
+            _mask = (mask==1.).reshape(-1)
+            # _depth = depth[_mask]
+            _normal = normal[_mask]
+            if torch.amax(torch.abs(torch.linalg.norm(_normal, axis=-1)-1)) > 1e-3:
+                import ipdb; ipdb.set_trace()
 
         # get global uv
         uv = np.mgrid[0:self.img_res[0], 0:self.img_res[1]].astype(np.int32)
@@ -366,8 +262,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         if self.if_pixel:
             self.convert_to_pixels()
 
-        print(white_blue('>>> [SceneDatasetDN-%s-%d]'%(self.dataset_name, self.__len__())))
-        print(self.frame_idx_list[:15])
+        print(green_text('<<<<<<<<<< [SceneDatasetDN-%s-%d]'%(self.dataset_name, self.__len__())), green_text(str(self.frame_idx_list[:15])))
         # if frame_num != -1:
         #     import ipdb; ipdb.set_trace()
 
@@ -452,12 +347,13 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         if self.if_overfit_train:
             assert len(self.train_frame_idx_list) >= self.val_frame_num
-            self.frame_idx_list = self.train_frame_idx_list[:min(self.val_frame_num, len(self.train_frame_idx_list))]
+            _ = max(len(self.train_frame_idx_input), min(self.val_frame_num, len(self.train_frame_idx_list)))
+            self.frame_idx_list = self.train_frame_idx_list[:_]
             print('[SceneDatasetDN-%s (name: %s)] -> sample_frames(): OVERFIT_TRAIN: %d val from train split'%(self.dataset_name, self.split, len(self.val_frame_idx_list)))
             # print(self.frame_idx_list)
         else:
             print('[SceneDatasetDN-%s (name %s)] -> sample_frames(): %d train, %d val'%(self.dataset_name, self.split, self.train_frame_num, self.val_frame_num))
-
+            
     def __len__(self):
         # if self.split == 'train':
         #     return self.n_images
@@ -466,7 +362,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         if self.if_pixel:
             return len(self.sampling_idx)
         else:
-            if self.if_sample_frames or self.frame_num_override != -1:
+            if self.if_sample_frames: # or self.frame_num_override != -1:
                 return len(self.frame_idx_list)
                 # if self.split == 'train':
                 #     return self.train_frame_num

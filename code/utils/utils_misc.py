@@ -114,6 +114,10 @@ def yellow(text):
     coloredd = colored(text, 'blue', 'on_yellow')
     return coloredd
 
+def yellow_text(text):
+    coloredd = colored(text, 'yellow')
+    return coloredd
+
 # Model
 def magenta(text):
     coloredd = colored(text, 'white', 'on_magenta')

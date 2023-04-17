@@ -140,7 +140,9 @@ scene_list = [
     # 'real/Bedroom_aligned', 
     # 'real/Bedroom_aligned_DARKER', 
     # 'real/Bedroom_supergloo_aligned_DARKER', 
-    'real/Bedroom_MORE_supergloo_DARKER', 
+    # 'real/Bedroom_MORE_supergloo_DARKER', 
+    
+    'i2-sdf/scan332_bedroom_relight_0', 
     ]
 job_list = []
 for scene in scene_list:
