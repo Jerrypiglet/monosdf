@@ -76,6 +76,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             return data_paths
 
         self.if_gt_data = if_gt_data
+        self.if_frame_idx_override = False
         
         if self.if_gt_data:
             self.image_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'Image'), "*.png" if not self.if_hdr else "*.exr"))
@@ -94,8 +95,18 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         if self.if_gt_data:
             # depth_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'depth'), "*.npy"))
             # normal_paths = glob_data(os.path.join('{0}/{1}'.format(self.instance_dir, 'normal'), "*.npy"))
-            depth_paths = [str(Path(self.instance_dir) / 'depth' / ('%s.npy'%_)) for _ in self.filenames]
-            normal_paths = [str(Path(self.instance_dir) / 'normal' / ('%s.npy'%_)) for _ in self.filenames]
+            depth_dir = Path(self.instance_dir) / 'depth'
+            if not depth_dir.exists():
+                depth_dir = Path(self.instance_dir) / 'MiDepth'
+                assert depth_dir.exists(), "Depth directory does not exist: %s"%depth_dir
+                
+            normal_dir = Path(self.instance_dir) / 'normal'
+            if not normal_dir.exists():
+                normal_dir = Path(self.instance_dir) / 'MiNormal'
+                assert normal_dir.exists(), "Normal directory does not exist: %s"%depth_dir
+               
+            depth_paths = [str(depth_dir / ('%s.npy'%_)) for _ in self.filenames]
+            normal_paths = [str(normal_dir / ('%s.npy'%_)) for _ in self.filenames]
         else:
             # depth_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_depth.npy"))
             # normal_paths = glob_data(os.path.join('{0}'.format(self.instance_dir), "*_normal.npy"))
@@ -133,6 +144,9 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             self.if_sample_frames = True
         else:
             print('>>> [SceneDatasetDN-%s]'%(self.dataset_name), yellow('Not sampling frames.'))
+            if dataset_name == 'vis_train' and train_frame_idx_input != []:
+                self.frame_idx_list = train_frame_idx_input
+                self.if_frame_idx_override = True
         
         # if self.frame_num_override != -1:
         #     import random
@@ -362,6 +376,9 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         if self.if_pixel:
             return len(self.sampling_idx)
         else:
+            if self.if_frame_idx_override:
+                return len(self.frame_idx_list)
+            
             if self.if_sample_frames: # or self.frame_num_override != -1:
                 return len(self.frame_idx_list)
                 # if self.split == 'train':
