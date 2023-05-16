@@ -140,12 +140,15 @@ scene_list = [
     # 'real/Bedroom_aligned', 
     # 'real/Bedroom_aligned_DARKER', 
     # 'real/Bedroom_supergloo_aligned_DARKER', 
-    'real/Bedroom_MORE_supergloo_DARKER', 
+    # 'real/Bedroom_MORE_supergloo_DARKER', 
+    
+    'indoor_synthetic/kitchen_mi', 
+
     ]
 job_list = []
 for scene in scene_list:
-    for task in ['depth', 'normal']:
-    # for task in ['normal']:
+    # for task in ['depth', 'normal']:
+    for task in ['normal']:
     # for task in ['depth']:
         job_list.append((task, scene))
 
