@@ -443,7 +443,7 @@ class MonoSDFTrainRunner():
                 
                 CUDA_VISIBLE_DEVICES = os.environ['CUDA_VISIBLE_DEVICES'] if 'CUDA_VISIBLE_DEVICES' in os.environ else -1, 
                 if self.GPU_INDEX == 0:
-                    print(loss_output['depth_loss'])
+                    # print(loss_output['depth_loss'])
                     print(
                         '{0} [{1}] ({2}/{3}): loss = {4}, rgb_loss = {5}, eikonal_loss = {6}, psnr = {7}, bete={8}, alpha={9}; [{10}]'
                             .format(self.exp_name, 

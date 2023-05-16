@@ -73,15 +73,19 @@ def reduction_image_based(image_loss, M):
 
 
 def mse_loss(prediction, target, mask, reduction=reduction_batch_based, if_pixel_input=False):
+    # print(reduction_batch_based)
 
     if if_pixel_input:
         M = torch.sum(mask, 1)
         res = prediction - target
         image_loss = torch.sum(mask * res * res, 1)
     else:
-        M = torch.sum(mask, (1, 2))
+        # M = torch.sum(mask, (1, 2))
+        # res = prediction - target
+        # image_loss = torch.sum(mask * res * res, (1, 2))
+        M = torch.sum(mask, 1)
         res = prediction - target
-        image_loss = torch.sum(mask * res * res, (1, 2))
+        image_loss = torch.sum(mask * res * res, 1)
 
     return reduction(image_loss, 2 * M)
 
@@ -118,7 +122,6 @@ class MSELoss(nn.Module):
     def forward(self, prediction, target, mask, if_pixel_input=False):
         return mse_loss(prediction, target, mask, reduction=self.__reduction, if_pixel_input=if_pixel_input)
 
-
 class GradientLoss(nn.Module):
     def __init__(self, scales=4, reduction='batch-based'):
         super().__init__()
@@ -137,7 +140,7 @@ class GradientLoss(nn.Module):
             step = pow(2, scale)
 
             total += gradient_loss(prediction[:, ::step, ::step], target[:, ::step, ::step],
-                                   mask[:, ::step, ::step], reduction=self.__reduction)
+                    mask[:, ::step, ::step], reduction=self.__reduction)
 
         return total
 
@@ -158,15 +161,17 @@ class ScaleAndShiftInvariantLoss(nn.Module):
             scale, shift = compute_scale_and_shift_1D(prediction, target, mask)
             # [TODO] make target simply (N,) instead of (1, N)
             self.__prediction_ssi = scale.view(1, -1) * prediction + shift.view(1, -1)
+            print('scale, shift', scale, shift, prediction.shape)
         else:
             self.__prediction_ssi = prediction
 
-        print(mask.shape, torch.sum(mask))
+        # print(mask.shape, torch.sum(mask))
         total = self.__data_loss(self.__prediction_ssi, target, mask, if_pixel_input=if_pixel_input)
         # print(target.shape, mask.shape, torch.sum(mask))
         if self.__alpha > 0 and not if_pixel_input: # 'gradient loss not supported for pixel batch mode'
-            assert False, 'Rui: disabled'
-            total += self.__alpha * self.__regularization_loss(self.__prediction_ssi, target, mask)
+            # assert False, 'Rui: disabled'
+            # total += self.__alpha * self.__regularization_loss(self.__prediction_ssi, target, mask)
+            pass
 
         return total
 
@@ -276,8 +281,6 @@ class MonoSDFLoss(nn.Module):
         mask = (ground_truth['mask'] > 0.5).cuda() & mask
 
         depth_loss = self.get_depth_loss(depth_pred, depth_gt, mask, if_pixel_input=if_pixel_input, if_scale_invariant_depth=self.if_scale_invariant_depth)
-        # if isinstance(depth_loss, float):
-        #     depth_loss = torch.tensor(0.0).cuda().float()    
         
         normal_l1, normal_cos = self.get_normal_loss(normal_pred * mask, normal_gt)
         

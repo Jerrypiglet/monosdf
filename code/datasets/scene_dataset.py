@@ -2,7 +2,7 @@ import os
 import torch
 import torch.nn.functional as F
 import numpy as np
-import time
+from tqdm import tqdm
 from utils.utils_misc import yellow, white_blue, green, green_text, yellow_text
 import utils.general as utils
 from utils import rend_util
@@ -204,7 +204,8 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             self.pose_all.append(torch.from_numpy(pose).float())
 
         self.rgb_images = []
-        for path in self.image_paths:
+        print('Loading RGB images...')
+        for path in tqdm(self.image_paths):
             if self.if_hdr:
                 rgb = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
                 assert rgb is not None
@@ -218,8 +219,8 @@ class SceneDatasetDN(torch.utils.data.Dataset):
             
         self.depth_images = []
         self.normal_images = []
-
-        for dpath, npath in zip(depth_paths, normal_paths):
+        print('Loading depth and normal images...')
+        for dpath, npath in tqdm(zip(depth_paths, normal_paths)):
             depth = np.load(dpath)
             if self.if_gt_data:
                 depth = depth * self.scale # manually normalize GT depth (which is un-normalized)
@@ -240,12 +241,13 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         # load mask
         self.mask_images = []
+        print('Loading mask images...')
         if mask_paths is None:
             for depth in self.depth_images:
                 mask = torch.ones_like(depth)
                 self.mask_images.append(mask)
         else:
-            for path in mask_paths:
+            for path in tqdm(mask_paths):
                 if Path(path).suffix == '.npy':
                     mask = np.load(path)
                 elif Path(path).suffix == '.png':
@@ -259,14 +261,14 @@ class SceneDatasetDN(torch.utils.data.Dataset):
                 self.mask_images.append(torch.from_numpy(mask.reshape(-1, 1)).float())
         
         # checking loaded depth/normals...
-        for idx, (mask, normal, depth) in enumerate(zip(self.mask_images, self.normal_images, self.depth_images)):
-            # print(mask.shape, torch.sum(mask)/mask.shape[0])
-            assert (mask==1.).shape[0] > 0
-            _mask = (mask==1.).reshape(-1)
-            # _depth = depth[_mask]
-            _normal = normal[_mask]
-            if torch.amax(torch.abs(torch.linalg.norm(_normal, axis=-1)-1)) > 1e-3:
-                import ipdb; ipdb.set_trace()
+        # for idx, (mask, normal, depth) in enumerate(zip(self.mask_images, self.normal_images, self.depth_images)):
+        #     # print(mask.shape, torch.sum(mask)/mask.shape[0])
+        #     assert (mask==1.).shape[0] > 0
+        #     _mask = (mask==1.).reshape(-1)
+        #     # _depth = depth[_mask]
+        #     _normal = normal[_mask]
+        #     if torch.amax(torch.abs(torch.linalg.norm(_normal, axis=-1)-1)) > 1e-3:
+        #         import ipdb; ipdb.set_trace()
 
         # get global uv
         uv = np.mgrid[0:self.img_res[0], 0:self.img_res[1]].astype(np.int32)
@@ -276,7 +278,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
         if self.if_pixel:
             self.convert_to_pixels()
 
-        print(green_text('<<<<<<<<<< [SceneDatasetDN-%s-%d]'%(self.dataset_name, self.__len__())), green_text(str(self.frame_idx_list[:15])))
+        print(self.if_pixel, green_text('<<<<<<<<<< [SceneDatasetDN-%s-%d]'%(self.dataset_name, self.__len__())), green_text(str(self.frame_idx_list[:15])))
         # if frame_num != -1:
         #     import ipdb; ipdb.set_trace()
 
@@ -419,7 +421,7 @@ class SceneDatasetDN(torch.utils.data.Dataset):
 
         else:
             _idx = self.frame_idx_list[idx]
-            print(idx, _idx, len(self.intrinsics_all))
+            # print(idx, _idx, len(self.intrinsics_all))
 
             if self.num_views >= 0:
                 image_ids = [25, 22, 28, 40, 44, 48, 0, 8, 13][:self.num_views]

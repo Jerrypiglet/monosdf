@@ -80,6 +80,7 @@ if args.task == 'normal':
     
     pretrained_weights_path = root_dir + 'omnidata_dpt_normal_v2.ckpt'
     model = DPTDepthModel(backbone='vitb_rn50_384', num_channels=3) # DPT Hybrid
+    print(pretrained_weights_path)
     checkpoint = torch.load(pretrained_weights_path, map_location=map_location)
     if 'state_dict' in checkpoint:
         state_dict = {}
@@ -107,6 +108,7 @@ elif args.task == 'depth':
     # model = DPTDepthModel(backbone='vitl16_384') # DPT Large
     model = DPTDepthModel(backbone='vitb_rn50_384') # DPT Hybrid
     checkpoint = torch.load(pretrained_weights_path, map_location=map_location)
+    print(pretrained_weights_path)
     if 'state_dict' in checkpoint:
         state_dict = {}
         for k, v in checkpoint['state_dict'].items():
